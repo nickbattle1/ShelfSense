@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- window colour behind Compose, so launching doesn't flash white -->
+    <style name="Theme.ShelfSense" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/shelf_cream</item>
+    </style>
+</resources>

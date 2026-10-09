@@ -1,0 +1,418 @@
+package com.example.shelfsense.screens.addfood
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.shelfsense.data.model.DateType
+import com.example.shelfsense.data.model.FoodCategory
+import com.example.shelfsense.data.model.StorageLocation
+import com.example.shelfsense.domain.DateDriver
+import com.example.shelfsense.domain.DateExplainer
+import com.example.shelfsense.domain.Dates
+import com.example.shelfsense.ui.components.*
+import com.example.shelfsense.ui.theme.ShelfTheme
+import java.time.LocalDate
+
+@Composable
+fun FoodFormScreen(
+    onCancel: () -> Unit,
+    onSaved: () -> Unit,
+    viewModel: FoodFormViewModel = viewModel()
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val c = ShelfTheme.colors
+    val messenger = LocalMessenger.current
+    val focusManager = LocalFocusManager.current
+    val today = remember { LocalDate.now() }
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+
+    val errors = state.errors(today)
+    // errors only show after the first save attempt, so an empty form doesn't open covered in red
+    val shown = if (state.showErrors) errors else FormErrors()
+    val blocked = state.showErrors && errors.any
+
+    LaunchedEffect(state.savedName) {
+        val name = state.savedName ?: return@LaunchedEffect
+        messenger.show(if (state.mode == FormMode.EDIT) "Changes to $name saved" else "$name added to your pantry")
+        onSaved()
+    }
+
+    val requestClose: () -> Unit = {
+        if (state.dirty) {
+            confirmDiscard = true
+        } else {
+            onCancel()
+        }
+    }
+    BackHandler(enabled = state.dirty) { confirmDiscard = true }
+
+    val save: () -> Unit = {
+        focusManager.clearFocus()
+        viewModel.save()
+    }
+    val title = when (state.mode) {
+        FormMode.EDIT -> "Edit food"
+        FormMode.LOOKUP -> "Confirm details"
+        FormMode.MANUAL -> "Add food"
+    }
+
+    Scaffold(containerColor = c.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        if (state.loadingItem) {
+            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = c.primary)
+            }
+            return@Scaffold
+        }
+        if (state.notFound) {
+            Column(Modifier.padding(padding).padding(horizontal = 20.dp)) {
+                ScreenHeader(title = title, onBack = onCancel)
+                EmptyState(
+                    icon = Icons.Filled.Inventory2,
+                    title = "This item is no longer in your pantry",
+                    body = "It may have been used up or deleted, possibly on another device.",
+                    actionLabel = "Go back",
+                    onAction = onCancel
+                )
+            }
+            return@Scaffold
+        }
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+        ) {
+            ScreenHeader(
+                title = title,
+                onBack = requestClose,
+                actionLabel = "Save",
+                onAction = save,
+                actionEnabled = !state.saving && !blocked
+            )
+            LookupSection(state, onRetry = viewModel::retryLookup)
+            if (state.duplicates > 0) {
+                InfoBanner(
+                    title = "Already in your pantry",
+                    body = if (state.duplicates == 1) {
+                        "You're already tracking one of these. Saving adds another."
+                    } else {
+                        "You're already tracking ${state.duplicates} of these. Saving adds another."
+                    },
+                    kind = BannerKind.INFO
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+            if (blocked) {
+                InfoBanner(title = "Check the highlighted fields", kind = BannerKind.ERROR)
+                Spacer(Modifier.height(16.dp))
+            }
+            TextFieldRow(
+                label = "Food name",
+                value = state.name,
+                onValueChange = viewModel::onNameChange,
+                placeholder = "Add a name for this item",
+                error = shown.name,
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Done,
+                onImeAction = { focusManager.clearFocus() }
+            )
+            DropdownField(
+                label = "Category",
+                options = FoodCategory.entries,
+                selected = state.category,
+                onSelect = viewModel::onCategoryChange,
+                optionLabel = { it.label },
+                placeholder = "Select a category",
+                error = shown.category,
+                optionIcon = { it.icon() }
+            )
+            DropdownField(
+                label = "Storage location",
+                options = StorageLocation.entries,
+                selected = state.storage,
+                onSelect = viewModel::onStorageChange,
+                optionLabel = { it.label },
+                placeholder = "Select a location",
+                error = shown.storage,
+                optionIcon = { it.icon() }
+            )
+            DropdownField(
+                label = "Date type",
+                options = DateType.entries,
+                selected = state.dateType,
+                onSelect = viewModel::onDateTypeChange,
+                optionLabel = { it.label },
+                placeholder = "Use by or best before",
+                error = shown.dateType,
+                helper = "Use by is about safety, best before is about quality"
+            )
+            DateField(
+                label = "Printed date",
+                value = state.printedDate,
+                onPicked = viewModel::onPrintedDateChange,
+                error = shown.printedDate,
+                helper = printedHelper(state, today),
+                earliest = today.minusYears(1),
+                latest = today.plusYears(10)
+            )
+            QuickDateRow(
+                options = listOf(
+                    "In 3 days" to today.plusDays(3),
+                    "In a week" to today.plusWeeks(1),
+                    "In 2 weeks" to today.plusWeeks(2),
+                    "In a month" to today.plusMonths(1)
+                ),
+                selected = state.printedDate,
+                onPick = viewModel::onPrintedDateChange
+            )
+            SectionLabel("Has this been opened?")
+            Segmented(
+                options = listOf("No", "Yes"),
+                selectedIndex = if (state.isOpened) 1 else 0,
+                onSelect = { viewModel.onOpenedChange(it == 1) }
+            )
+            AnimatedVisibility(visible = state.isOpened) {
+                OpenedSection(
+                    state = state,
+                    errors = shown,
+                    today = today,
+                    onOpenedDate = viewModel::onOpenedDateChange,
+                    onInstruction = viewModel::onInstructionChange,
+                    onUseWithin = viewModel::onUseWithinChange
+                )
+            }
+            ActionPreview(state)
+            Spacer(Modifier.height(24.dp))
+            PrimaryButton(
+                if (state.mode == FormMode.EDIT) "Save changes" else "Save item",
+                onClick = save,
+                enabled = !blocked,
+                loading = state.saving
+            )
+            Spacer(Modifier.height(10.dp))
+            SecondaryButton("Cancel", onClick = requestClose)
+            Spacer(Modifier.height(40.dp))
+        }
+    }
+
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text(if (state.mode == FormMode.EDIT) "Discard your changes?" else "Discard this item?") },
+            text = { Text("What you've entered so far won't be saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDiscard = false
+                    onCancel()
+                }) { Text("Discard", color = c.urgent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") }
+            },
+            containerColor = c.surface
+        )
+    }
+}
+
+private fun printedHelper(state: FoodFormState, today: LocalDate): String? {
+    val printed = state.printedDate
+    return when {
+        printed != null && printed.isBefore(today) -> "This date has already passed"
+        printed == null && (state.category == FoodCategory.FRUIT_VEG || state.category == FoodCategory.LEFTOVERS) ->
+            "No printed date? Choose the day you'd like to use it by"
+        else -> null
+    }
+}
+
+@Composable
+private fun LookupSection(state: FoodFormState, onRetry: () -> Unit) {
+    val c = ShelfTheme.colors
+    when (val lookup = state.lookup) {
+        LookupState.None -> Unit
+        LookupState.Loading -> {
+            ShelfCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(22.dp), color = c.primary, strokeWidth = 2.5.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Looking up ${state.barcode.orEmpty()}", style = MaterialTheme.typography.labelLarge, color = c.ink)
+                        Text("Checking Open Food Facts…", style = MaterialTheme.typography.labelSmall, color = c.muted)
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+        is LookupState.Found -> {
+            InfoBanner(
+                title = "Product found in Open Food Facts",
+                body = if (lookup.product.name.isBlank()) "Some details are missing, so add a name below." else null,
+                kind = BannerKind.SUCCESS
+            )
+            Spacer(Modifier.height(16.dp))
+            ShelfCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FoodThumb(
+                        name = lookup.product.name,
+                        category = state.category ?: lookup.product.category ?: FoodCategory.DRY_GOODS,
+                        imageUrl = lookup.product.imageUrl,
+                        size = 64.dp
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            lookup.product.name.ifBlank { "Unnamed product" },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = c.ink
+                        )
+                        lookup.product.brand?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, color = c.muted)
+                        }
+                        Text(
+                            "Barcode ${lookup.product.barcode}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.muted
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+        LookupState.NotFound -> {
+            InfoBanner(
+                title = "No match for that barcode",
+                body = "Open Food Facts is contributed by the public, so some products are missing. Add it by hand below.",
+                kind = BannerKind.WARNING
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+        is LookupState.Failed -> {
+            InfoBanner(
+                title = "The lookup didn't work",
+                body = lookup.message,
+                kind = BannerKind.ERROR,
+                actionLabel = "Try again",
+                onAction = onRetry
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun OpenedSection(
+    state: FoodFormState,
+    errors: FormErrors,
+    today: LocalDate,
+    onOpenedDate: (LocalDate) -> Unit,
+    onInstruction: (Boolean) -> Unit,
+    onUseWithin: (String) -> Unit
+) {
+    val c = ShelfTheme.colors
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        DateField(
+            label = "Date opened",
+            value = state.openedDate,
+            onPicked = onOpenedDate,
+            error = errors.openedDate,
+            earliest = today.minusYears(1),
+            latest = today
+        )
+        QuickDateRow(
+            options = listOf(
+                "Today" to today,
+                "Yesterday" to today.minusDays(1),
+                "2 days ago" to today.minusDays(2)
+            ),
+            selected = state.openedDate,
+            onPick = onOpenedDate
+        )
+        SectionLabel("Does the package say how soon to use it?")
+        Segmented(
+            options = listOf("It does not say", "Use within"),
+            selectedIndex = if (state.hasInstruction) 1 else 0,
+            onSelect = { onInstruction(it == 1) }
+        )
+        if (state.hasInstruction) {
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.Top) {
+                TextFieldRow(
+                    label = "Days",
+                    value = state.useWithinText,
+                    onValueChange = onUseWithin,
+                    modifier = Modifier.width(120.dp),
+                    placeholder = "5",
+                    error = errors.useWithin,
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                    maxLength = 3
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "days after opening",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = c.ink,
+                    modifier = Modifier.padding(top = 36.dp)
+                )
+            }
+        }
+        Text(
+            "Enter the instruction shown on the packaging. ShelfSense never guesses it from the type of food.",
+            style = MaterialTheme.typography.labelSmall,
+            color = c.muted,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun ActionPreview(state: FoodFormState) {
+    val info = state.preview() ?: return
+    val c = ShelfTheme.colors
+    val opened = state.openedDate
+    val days = state.useWithinDays
+    val note = when {
+        opened == null -> "Choose the day it was opened to see the action date."
+        !state.hasInstruction || days == null -> "No after-opening instruction, so the printed date applies."
+        info.driver == DateDriver.OPENING_DEADLINE ->
+            "Opened ${Dates.dayMonth(opened)} plus ${DateExplainer.plural(days, "day")} comes before the printed date."
+        info.driver == DateDriver.SAME_DAY -> "The opening deadline and the printed date fall on the same day."
+        else -> "The printed date comes before the opening deadline, so it still applies."
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp)
+            .background(c.tint, RoundedCornerShape(14.dp))
+            .padding(16.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+    ) {
+        Text("SHELFSENSE ACTION DATE", style = MaterialTheme.typography.labelSmall, color = c.primary)
+        Spacer(Modifier.height(4.dp))
+        Text(Dates.long(info.actionDate), style = MaterialTheme.typography.titleLarge, color = c.primary)
+        Spacer(Modifier.height(4.dp))
+        Text(note, style = MaterialTheme.typography.labelSmall, color = c.primary)
+    }
+}
