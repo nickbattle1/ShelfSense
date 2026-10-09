@@ -306,7 +306,8 @@ private fun LookupSection(state: FoodFormState, onRetry: () -> Unit, onTryAnothe
                         name = lookup.product.name,
                         category = state.category ?: lookup.product.category ?: FoodCategory.DRY_GOODS,
                         imageUrl = lookup.product.imageUrl,
-                        size = 64.dp
+                        size = 64.dp,
+                        storage = state.storage
                     )
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -394,7 +395,8 @@ private fun PhotoSection(state: FoodFormState, onPhoto: (String?) -> Unit) {
             category = state.category ?: FoodCategory.DRY_GOODS,
             imageUrl = state.imageUrl,
             photoPath = state.photoPath,
-            size = 64.dp
+            size = 64.dp,
+            storage = state.storage
         )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -499,7 +501,6 @@ private fun OpenedSection(
                     value = state.useWithinText,
                     onValueChange = onUseWithin,
                     modifier = Modifier.width(120.dp),
-                    placeholder = "5",
                     error = errors.useWithin,
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done,
@@ -533,7 +534,10 @@ private fun ActionPreview(state: FoodFormState) {
     val opened = state.openedDate
     val days = state.useWithinDays
     val other = if (state.dateType == DateType.OWN_DATE) "the date you chose" else "the printed date"
+    // "use within" is picked but the days box is still empty, so there's no date to show yet
+    val waitingForDays = state.hasInstruction && days == null
     val note = when {
+        waitingForDays -> "Enter the number of days from the pack to work out the action date."
         info == null -> "It doesn't expire and there's no after-opening instruction, so there's nothing to count down to."
         opened == null -> "Choose the day it was opened to see the action date."
         !state.hasInstruction || days == null -> "No after-opening instruction, so $other applies."
@@ -553,12 +557,14 @@ private fun ActionPreview(state: FoodFormState) {
             .semantics { liveRegion = LiveRegionMode.Polite }
     ) {
         Text("SHELFSENSE ACTION DATE", style = MaterialTheme.typography.labelSmall, color = c.primary)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            info?.let { Dates.long(it.actionDate) } ?: "None",
-            style = MaterialTheme.typography.titleLarge,
-            color = c.primary
-        )
+        if (!waitingForDays) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                info?.let { Dates.long(it.actionDate) } ?: "None",
+                style = MaterialTheme.typography.titleLarge,
+                color = c.primary
+            )
+        }
         Spacer(Modifier.height(4.dp))
         Text(note, style = MaterialTheme.typography.labelSmall, color = c.primary)
     }

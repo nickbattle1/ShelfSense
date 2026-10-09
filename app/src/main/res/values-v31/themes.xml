@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- android 12 and later draw their own splash screen with the launcher icon in a circle.
+         this swaps in the full logo, sized to sit inside that circle without being cropped -->
+    <style name="Theme.ShelfSense" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/shelf_cream</item>
+        <item name="android:windowSplashScreenBackground">@color/shelf_cream</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+</resources>

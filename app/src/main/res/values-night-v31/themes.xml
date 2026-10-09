@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- night splash, the logo here comes from drawable-night with lighter greens -->
+    <style name="Theme.ShelfSense" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/shelf_night</item>
+        <item name="android:windowSplashScreenBackground">@color/shelf_night</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+    </style>
+</resources>

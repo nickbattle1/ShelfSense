@@ -23,9 +23,11 @@ data class HomeUiState(
     val loading: Boolean = true,
     val firstName: String? = null,
     val counts: Map<StorageLocation, Int> = emptyMap(),
-    val priority: List<TrackedItem> = emptyList(),
+    // up to three items due within the next week, soonest first
+    val dueSoon: List<TrackedItem> = emptyList(),
+    // the next dated item after this week, only filled when nothing is due sooner
+    val nextUp: TrackedItem? = null,
     val totalActive: Int = 0,
-    val soonCount: Int = 0,
     val month: OutcomeTotals = OutcomeTotals(),
     val remindersEnabled: Boolean = true,
     val notificationAsked: Boolean = false,
@@ -43,17 +45,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         pantry.observeOutcomeCounts(monthStart, Long.MAX_VALUE),
         settings.settings
     ) { items, monthCounts, prefs ->
-        // Room already sorts by action date, so the first few are the ones to use first
-        val tracked = items.tracked()
+        // Room already sorts by action date, so these come out soonest first.
+        // undated items have nothing to count down to, so they never appear here
+        val dated = items.tracked().filter { it.info != null }
+        val thisWeek = dated.filter { (it.info?.daysLeft ?: Long.MAX_VALUE) <= WINDOW_DAYS }
         val name = prefs.displayName ?: FirebaseAuth.getInstance().currentUser?.displayName
         HomeUiState(
             loading = false,
             firstName = name?.trim()?.substringBefore(' ')?.ifBlank { null },
             counts = items.groupingBy { it.storage }.eachCount(),
-            // undated items have nothing to count down to, so they never take a spot here
-            priority = tracked.filter { it.info != null }.take(PRIORITY_COUNT),
+            dueSoon = thisWeek.take(MAX_SHOWN),
+            nextUp = if (thisWeek.isEmpty()) dated.firstOrNull() else null,
             totalActive = items.size,
-            soonCount = tracked.count { (it.info?.daysLeft ?: Long.MAX_VALUE) <= prefs.leadDays },
             month = monthCounts.toTotals(),
             remindersEnabled = prefs.remindersEnabled,
             notificationAsked = prefs.notificationAsked,
@@ -70,6 +73,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
-        const val PRIORITY_COUNT = 5
+        // Home is a short summary of the week ahead, See all opens the full list in Pantry.
+        // three cards keep the impact card on screen, as in the A1 layout
+        const val WINDOW_DAYS = 7L
+        const val MAX_SHOWN = 3
     }
 }

@@ -61,6 +61,21 @@ private fun produceArtFor(name: String): Int? {
     }
 }
 
+// the colour pair each storage place uses on the Home tiles. thumbnails without a photo reuse it,
+// so the icon says what the food is and the colour says where it's kept
+data class LocationColours(val background: Color, val accent: Color)
+
+@Composable
+@ReadOnlyComposable
+fun locationColours(location: StorageLocation?): LocationColours {
+    val c = ShelfTheme.colors
+    return when (location) {
+        StorageLocation.PANTRY -> LocationColours(c.oat, c.warn)
+        StorageLocation.FREEZER -> LocationColours(c.infoBg, c.info)
+        StorageLocation.FRIDGE, null -> LocationColours(c.tint, c.primary)
+    }
+}
+
 // order of preference: the person's own photo, the Open Food Facts photo,
 // the prototype's produce art, then the category icon
 @Composable
@@ -70,7 +85,8 @@ fun FoodThumb(
     imageUrl: String?,
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
-    photoPath: String? = null
+    photoPath: String? = null,
+    storage: StorageLocation? = null
 ) {
     val c = ShelfTheme.colors
     val art = remember(name) { produceArtFor(name) }
@@ -94,11 +110,14 @@ fun FoodThumb(
             )
         }
         art != null -> Image(painterResource(art), contentDescription = null, modifier = modifier.size(size))
-        else -> Box(
-            modifier.size(size).background(c.tint, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(category.icon(), contentDescription = null, tint = c.primary, modifier = Modifier.size(size * 0.5f))
+        else -> {
+            val colours = locationColours(storage)
+            Box(
+                modifier.size(size).background(colours.background, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(category.icon(), contentDescription = null, tint = colours.accent, modifier = Modifier.size(size * 0.5f))
+            }
         }
     }
 }

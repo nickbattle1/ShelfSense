@@ -137,7 +137,7 @@ fun FoodDetailScreen(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                FoodThumb(item.name, item.category, item.imageUrl, size = 56.dp, photoPath = item.photoPath)
+                FoodThumb(item.name, item.category, item.imageUrl, size = 56.dp, photoPath = item.photoPath, storage = item.storage)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -481,7 +481,6 @@ private fun MarkOpenedSheet(item: PantryItem, onSave: (LocalDate, Int?) -> Unit,
                     value = daysText,
                     onValueChange = { daysText = it.filter { ch -> ch.isDigit() } },
                     modifier = Modifier.width(120.dp),
-                    placeholder = "5",
                     error = if (showErrors) daysError else null,
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done,
@@ -498,8 +497,11 @@ private fun MarkOpenedSheet(item: PantryItem, onSave: (LocalDate, Int?) -> Unit,
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            preview?.let { "New action date: ${Dates.long(it.actionDate)}" }
-                ?: "No action date, since it doesn't expire",
+            when {
+                hasInstruction && days == null -> "Enter the number of days to see the new action date"
+                preview != null -> "New action date: ${Dates.long(preview.actionDate)}"
+                else -> "No action date, since it doesn't expire"
+            },
             style = MaterialTheme.typography.labelLarge,
             color = c.primary
         )

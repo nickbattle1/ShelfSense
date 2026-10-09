@@ -2,15 +2,12 @@ package com.example.shelfsense.screens.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.R
 import com.example.shelfsense.data.model.StorageLocation
+import com.example.shelfsense.domain.ActionDates
 import com.example.shelfsense.domain.DateExplainer
 import com.example.shelfsense.domain.Dates
 import com.example.shelfsense.domain.OutcomeTotals
@@ -43,14 +41,14 @@ import com.example.shelfsense.ui.components.PermissionStep
 import com.example.shelfsense.ui.components.PrimaryButton
 import com.example.shelfsense.ui.components.ScreenHeader
 import com.example.shelfsense.ui.components.SectionHeader
-import com.example.shelfsense.ui.components.ShelfCard
-import com.example.shelfsense.ui.components.UrgencyLabel
 import com.example.shelfsense.ui.components.icon
+import com.example.shelfsense.ui.components.locationColours
 import com.example.shelfsense.ui.components.rememberNotificationAccess
 import com.example.shelfsense.ui.components.urgencyStyle
 import com.example.shelfsense.ui.theme.ShelfTheme
 import java.time.LocalTime
 
+// layout, sizes and colours follow the A1 home design
 @Composable
 fun HomeScreen(
     onOpenItem: (String) -> Unit,
@@ -74,7 +72,7 @@ fun HomeScreen(
         ) {
             item(key = "header") {
                 ScreenHeader {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         "${greeting()}, ${state.firstName ?: "there"}",
                         style = MaterialTheme.typography.titleMedium,
@@ -108,23 +106,23 @@ fun HomeScreen(
                 SectionHeader(
                     title = "Items expiring soon",
                     actionLabel = if (state.totalActive > 0) "See all" else null,
-                    onAction = { onOpenPantry(if (state.soonCount > 0) PantryFilter.SOON else PantryFilter.ALL) }
+                    onAction = { onOpenPantry(PantryFilter.ALL) }
                 )
             }
-            if (!state.loading && state.totalActive == 0) {
-                item(key = "empty") {
+            when {
+                state.loading -> Unit
+                state.totalActive == 0 -> item(key = "empty") {
                     EmptyPantryCard(onAddFood)
                 }
-            } else if (!state.loading && state.priority.isEmpty()) {
-                item(key = "undated") {
-                    UndatedCard()
+                state.dueSoon.isEmpty() -> item(key = "nothing_due") {
+                    NothingDueCard(state.nextUp, onOpenItem)
+                }
+                else -> items(state.dueSoon, key = { it.item.id }) { tracked ->
+                    UseFirstCard(tracked, onClick = { onOpenItem(tracked.item.id) })
                 }
             }
-            items(state.priority, key = { it.item.id }) { tracked ->
-                UseFirstCard(tracked, onClick = { onOpenItem(tracked.item.id) })
-            }
             item(key = "impact") {
-                ImpactCard(state.month, onOpenInsights, Modifier.padding(top = 8.dp))
+                ImpactCard(state.month, onOpenInsights, Modifier.padding(top = 6.dp))
             }
         }
     }
@@ -136,36 +134,39 @@ private fun greeting(hour: Int = LocalTime.now().hour): String = when (hour) {
     else -> "Good evening"
 }
 
+// each place keeps its own colour from the A1 design, fridge mint, pantry oat and freezer blue.
+// the words still say which is which, so the colour is a shortcut rather than the only cue
 @Composable
 private fun LocationRow(counts: Map<StorageLocation, Int>, onOpen: (PantryFilter) -> Unit) {
     val c = ShelfTheme.colors
-    val locations = listOf(
+    val places = listOf(
         StorageLocation.FRIDGE to PantryFilter.FRIDGE,
         StorageLocation.PANTRY to PantryFilter.PANTRY,
         StorageLocation.FREEZER to PantryFilter.FREEZER
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        locations.forEach { (location, filter) ->
+        places.forEach { (location, filter) ->
+            val colours = locationColours(location)
             val count = counts[location] ?: 0
             Column(
                 Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(c.surface)
-                    .border(1.dp, c.line, RoundedCornerShape(14.dp))
+                    // a minimum rather than a fixed height, so larger font settings don't clip the text
+                    .heightIn(min = 116.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colours.background)
                     .clickable(onClickLabel = "Show ${location.label.lowercase()} items") { onOpen(filter) }
                     .padding(vertical = 14.dp, horizontal = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Box(Modifier.size(40.dp).background(c.tint, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(location.icon(), contentDescription = null, tint = c.primary, modifier = Modifier.size(22.dp))
-                }
+                Icon(location.icon(), contentDescription = null, tint = colours.accent, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(8.dp))
                 Text(location.label, style = MaterialTheme.typography.labelLarge, color = c.ink)
                 Text(
                     if (count == 1) "1 item" else "$count items",
                     style = MaterialTheme.typography.labelSmall,
-                    color = c.muted
+                    color = c.ink
                 )
             }
         }
@@ -176,45 +177,42 @@ private fun LocationRow(counts: Map<StorageLocation, Int>, onOpen: (PantryFilter
 private fun UseFirstCard(tracked: TrackedItem, onClick: () -> Unit) {
     val c = ShelfTheme.colors
     val item = tracked.item
-    val style = urgencyStyle(tracked.info?.urgency)
+    val accent = urgencyStyle(tracked.info?.urgency).fg
     val opened = item.openedDate
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .clip(RoundedCornerShape(14.dp))
-            .background(c.surface)
-            .border(1.dp, c.line, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // the stripe repeats the urgency colour, the label beside it carries the meaning
-        Box(Modifier.width(5.dp).fillMaxHeight().background(style.fg))
+    Box(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Row(
             Modifier
-                .weight(1f)
-                .heightIn(min = 76.dp)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .fillMaxWidth()
+                .heightIn(min = 84.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(c.surface)
+                .clickable(onClick = onClick)
+                .padding(start = 18.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FoodThumb(item.name, item.category, item.imageUrl, photoPath = item.photoPath)
+            FoodThumb(item.name, item.category, item.imageUrl, size = 48.dp, photoPath = item.photoPath, storage = item.storage)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     item.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
                     color = c.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                UrgencyLabel(tracked.info, Modifier.padding(top = 2.dp))
+                // the words carry the urgency, the colour only repeats it
+                Text(
+                    tracked.info?.let { ActionDates.daysLeftLabel(it.daysLeft) } ?: "No expiry",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = accent
+                )
                 if (opened != null) {
                     val days = item.useWithinDays
                     Text(
                         if (days != null) {
-                            "Opened ${Dates.short(opened)}, use within ${DateExplainer.plural(days, "day")}"
+                            "Opened ${Dates.dayMonth(opened)}, use within ${DateExplainer.plural(days, "day")}"
                         } else {
-                            "Opened ${Dates.short(opened)}"
+                            "Opened ${Dates.dayMonth(opened)}"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = c.muted
@@ -223,13 +221,57 @@ private fun UseFirstCard(tracked: TrackedItem, onClick: () -> Unit) {
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = c.muted)
         }
+        // drawn over the card's edge rather than clipped by it, so the stripe keeps its straight ends
+        Box(
+            Modifier
+                .width(6.dp)
+                .fillMaxHeight()
+                .background(accent, RoundedCornerShape(3.dp))
+        )
+    }
+}
+
+@Composable
+private fun NothingDueCard(nextUp: TrackedItem?, onOpenItem: (String) -> Unit) {
+    val c = ShelfTheme.colors
+    val info = nextUp?.info
+    val tap = if (nextUp != null) {
+        Modifier.clickable(onClickLabel = "Open ${nextUp.item.name}") { onOpenItem(nextUp.item.id) }
+    } else {
+        Modifier
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(c.surface)
+            .then(tap)
+            .padding(16.dp)
+    ) {
+        Text("Nothing due this week", style = MaterialTheme.typography.titleMedium, color = c.ink)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (nextUp != null && info != null) {
+                "Next up is ${nextUp.item.name}, with ${ActionDates.daysLeftLabel(info.daysLeft).lowercase()}."
+            } else {
+                "Nothing in your pantry has a date to count down to."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.muted
+        )
     }
 }
 
 @Composable
 private fun EmptyPantryCard(onAddFood: () -> Unit) {
     val c = ShelfTheme.colors
-    ShelfCard {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(c.surface)
+            .padding(16.dp)
+    ) {
         Text("Nothing in your pantry yet", style = MaterialTheme.typography.titleMedium, color = c.ink)
         Spacer(Modifier.height(4.dp))
         Text(
@@ -243,55 +285,38 @@ private fun EmptyPantryCard(onAddFood: () -> Unit) {
 }
 
 @Composable
-private fun UndatedCard() {
-    val c = ShelfTheme.colors
-    ShelfCard {
-        Text("Nothing to count down", style = MaterialTheme.typography.titleMedium, color = c.ink)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Everything in your pantry is marked as not expiring, so there's nothing that needs using first.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = c.muted
-        )
-    }
-}
-
-@Composable
 private fun ImpactCard(totals: OutcomeTotals, onOpenInsights: () -> Unit, modifier: Modifier = Modifier) {
     val c = ShelfTheme.colors
     val (title, message) = impactCopy(totals)
-    Column(
+    Row(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(c.impactStart, c.impactEnd)))
+            // mint across most of the card, only deepening towards the far corner
+            .background(Brush.linearGradient(listOf(c.impactStart, c.impactStart, c.impactEnd)))
             .clickable(onClickLabel = "View insights", onClick = onOpenInsights)
-            .padding(18.dp)
+            .padding(horizontal = 18.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleLarge, color = c.impactInk)
-                Spacer(Modifier.height(6.dp))
-                Text(message, style = MaterialTheme.typography.bodyMedium, color = c.impactInk)
-            }
-            // the all white leaves keep their contrast on the dark theme's gradient
-            Image(
-                painter = painterResource(if (c.isDark) R.drawable.logo1_dark else R.drawable.logo1),
-                contentDescription = null,
-                modifier = Modifier.size(44.dp)
+        // the all white leaves keep their contrast on the dark theme's gradient
+        Image(
+            painter = painterResource(if (c.isDark) R.drawable.logo1_dark else R.drawable.logo1),
+            contentDescription = null,
+            modifier = Modifier.size(44.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, color = c.impactInk)
+            Spacer(Modifier.height(6.dp))
+            Text(message, style = MaterialTheme.typography.labelSmall, color = c.impactInk)
+            Text(
+                "View insights",
+                style = MaterialTheme.typography.labelLarge,
+                color = c.impactInk,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("View insights", style = MaterialTheme.typography.labelLarge, color = c.impactInk)
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = c.impactInk,
-                modifier = Modifier.size(18.dp)
-            )
-        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = c.impactInk)
     }
 }
 

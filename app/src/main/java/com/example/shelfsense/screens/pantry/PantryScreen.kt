@@ -168,7 +168,7 @@ private fun PantryRow(tracked: TrackedItem, onClick: () -> Unit, modifier: Modif
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FoodThumb(item.name, item.category, item.imageUrl, size = 44.dp, photoPath = item.photoPath)
+            FoodThumb(item.name, item.category, item.imageUrl, size = 44.dp, photoPath = item.photoPath, storage = item.storage)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
