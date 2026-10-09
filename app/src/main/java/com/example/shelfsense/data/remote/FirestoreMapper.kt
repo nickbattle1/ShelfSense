@@ -9,7 +9,8 @@ import com.google.firebase.firestore.DocumentSnapshot
 import java.time.LocalDate
 
 // converts between a Room row and the document at users/{uid}/pantry/{itemId}.
-// dates go up as ISO strings so they read clearly in the Firebase console
+// dates go up as ISO strings so they read clearly in the Firebase console.
+// photoPath is left out on purpose, it only means something on the phone that took the photo
 object FirestoreMapper {
 
     fun toDocument(item: PantryItem): Map<String, Any?> = hashMapOf(
@@ -20,10 +21,10 @@ object FirestoreMapper {
         "category" to item.category.name,
         "storage" to item.storage.name,
         "dateType" to item.dateType.name,
-        "printedDate" to item.printedDate.toString(),
+        "printedDate" to item.printedDate?.toString(),
         "openedDate" to item.openedDate?.toString(),
         "useWithinDays" to item.useWithinDays,
-        "actionDate" to item.actionDate.toString(),
+        "actionDate" to item.actionDate?.toString(),
         "outcome" to item.outcome?.name,
         "resolvedAt" to item.resolvedAt,
         "addedAt" to item.addedAt,
@@ -34,7 +35,9 @@ object FirestoreMapper {
     // the repository recalculates the action date before storing the result
     fun fromDocument(doc: DocumentSnapshot): PantryItem? = runCatching {
         val name = doc.getString("name") ?: return null
-        val printed = doc.getString("printedDate") ?: return null
+        val dateType = DateType.valueOf(doc.getString("dateType") ?: return null)
+        val printed = doc.getString("printedDate")?.let { LocalDate.parse(it) }
+        if (printed == null && dateType.needsDate) return null
         PantryItem(
             id = doc.id,
             name = name,
@@ -43,8 +46,8 @@ object FirestoreMapper {
             imageUrl = doc.getString("imageUrl"),
             category = FoodCategory.valueOf(doc.getString("category") ?: return null),
             storage = StorageLocation.valueOf(doc.getString("storage") ?: return null),
-            dateType = DateType.valueOf(doc.getString("dateType") ?: return null),
-            printedDate = LocalDate.parse(printed),
+            dateType = dateType,
+            printedDate = printed,
             openedDate = doc.getString("openedDate")?.let { LocalDate.parse(it) },
             useWithinDays = doc.getLong("useWithinDays")?.toInt(),
             outcome = doc.getString("outcome")?.let { Outcome.valueOf(it) },

@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory2
@@ -29,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.local.PantryItem
 import com.example.shelfsense.data.model.Choices
+import com.example.shelfsense.data.model.DateType
 import com.example.shelfsense.data.model.Outcome
 import com.example.shelfsense.domain.ActionDates
 import com.example.shelfsense.domain.ActionInfo
@@ -58,6 +60,7 @@ fun FoodDetailScreen(
     val whySheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val openedSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val item = state.item
+    // null for items with nothing to count down to
     val info = state.info
 
     // every outcome can be undone from the snackbar, which lives in the root scaffold
@@ -77,7 +80,7 @@ fun FoodDetailScreen(
             }
             return@Scaffold
         }
-        if (item == null || info == null) {
+        if (item == null) {
             Column(Modifier.padding(padding).padding(horizontal = 20.dp)) {
                 ScreenHeader(title = "Food details", onBack = onBack)
                 EmptyState(
@@ -134,7 +137,7 @@ fun FoodDetailScreen(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                FoodThumb(item.name, item.category, item.imageUrl, size = 56.dp)
+                FoodThumb(item.name, item.category, item.imageUrl, size = 56.dp, photoPath = item.photoPath)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -151,9 +154,13 @@ fun FoodDetailScreen(
                 }
             }
             Spacer(Modifier.height(18.dp))
-            UrgencyCard(item, info, onWhy = { showWhy = true })
+            if (info != null) {
+                UrgencyCard(item, info, onWhy = { showWhy = true })
+            } else {
+                NoDateCard()
+            }
 
-            if (item.openedDate != null && item.useWithinDays == null) {
+            if (item.openedDate != null && item.useWithinDays == null && item.dateType.needsDate) {
                 Spacer(Modifier.height(12.dp))
                 InfoBanner(
                     title = "No after-opening instruction",
@@ -166,7 +173,7 @@ fun FoodDetailScreen(
 
             SectionLabel("Shelf life")
             ShelfCard {
-                DetailRow("Printed ${item.dateType.label.lowercase()}", Dates.long(item.printedDate))
+                DetailRow(dateRowLabel(item.dateType), item.printedDate?.let { Dates.long(it) } ?: "None")
                 CardDivider()
                 if (item.openedDate != null) {
                     DetailRow("Opened", Dates.long(item.openedDate))
@@ -182,7 +189,11 @@ fun FoodDetailScreen(
                     item.useWithinDays?.let { "Use within ${DateExplainer.plural(it, "day")}" } ?: "Not recorded"
                 )
                 CardDivider()
-                DetailRow("ShelfSense action date", Dates.long(info.actionDate), strong = true)
+                DetailRow(
+                    "ShelfSense action date",
+                    info?.let { Dates.long(it.actionDate) } ?: "None",
+                    strong = true
+                )
             }
 
             SectionLabel("Storage")
@@ -284,6 +295,13 @@ fun FoodDetailScreen(
     }
 }
 
+private fun dateRowLabel(dateType: DateType): String = when (dateType) {
+    DateType.USE_BY -> "Printed use by"
+    DateType.BEST_BEFORE -> "Printed best before"
+    DateType.OWN_DATE -> "Your use-by date"
+    DateType.NO_EXPIRY -> "Date on the pack"
+}
+
 @Composable
 private fun UrgencyCard(item: PantryItem, info: ActionInfo, onWhy: () -> Unit) {
     val style = urgencyStyle(info.urgency)
@@ -332,6 +350,30 @@ private fun UrgencyCard(item: PantryItem, info: ActionInfo, onWhy: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text("Why this date?", style = MaterialTheme.typography.labelLarge, color = style.fg, modifier = Modifier.weight(1f))
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = style.fg)
+        }
+    }
+}
+
+// shown instead of the urgency card when there's nothing to count down to
+@Composable
+private fun NoDateCard() {
+    val c = ShelfTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(c.tint, RoundedCornerShape(14.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(Icons.Filled.AllInclusive, contentDescription = null, tint = c.primary, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Doesn't expire", style = MaterialTheme.typography.titleMedium, color = c.primary)
+            Text(
+                "There's no date to count down to, so it stays out of reminders. Mark it used once it runs out.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.primary
+            )
         }
     }
 }
@@ -456,7 +498,8 @@ private fun MarkOpenedSheet(item: PantryItem, onSave: (LocalDate, Int?) -> Unit,
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            "New action date: ${Dates.long(preview.actionDate)}",
+            preview?.let { "New action date: ${Dates.long(it.actionDate)}" }
+                ?: "No action date, since it doesn't expire",
             style = MaterialTheme.typography.labelLarge,
             color = c.primary
         )

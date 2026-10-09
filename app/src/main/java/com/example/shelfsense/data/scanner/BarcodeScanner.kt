@@ -26,11 +26,12 @@ class BarcodeScanner(private val context: Context) {
 
     private val scanner: GmsBarcodeScanner by lazy {
         val options = GmsBarcodeScannerOptions.Builder()
+            // UPC-E is left out: it's rare on Australian shelves, and a blurry part of a
+            // longer barcode can pass as one, which sends a wrong number to the lookup
             .setBarcodeFormats(
                 Barcode.FORMAT_EAN_13,
                 Barcode.FORMAT_EAN_8,
-                Barcode.FORMAT_UPC_A,
-                Barcode.FORMAT_UPC_E
+                Barcode.FORMAT_UPC_A
             )
             .enableAutoZoom()
             .build()

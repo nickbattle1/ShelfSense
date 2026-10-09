@@ -168,7 +168,7 @@ private fun PantryRow(tracked: TrackedItem, onClick: () -> Unit, modifier: Modif
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FoodThumb(item.name, item.category, item.imageUrl, size = 44.dp)
+            FoodThumb(item.name, item.category, item.imageUrl, size = 44.dp, photoPath = item.photoPath)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -190,7 +190,7 @@ private fun PantryRow(tracked: TrackedItem, onClick: () -> Unit, modifier: Modif
             Column(horizontalAlignment = Alignment.End) {
                 UrgencyLabel(tracked.info)
                 Text(
-                    Dates.short(tracked.info.actionDate),
+                    tracked.info?.let { Dates.short(it.actionDate) } ?: "No date",
                     style = MaterialTheme.typography.labelSmall,
                     color = c.muted
                 )

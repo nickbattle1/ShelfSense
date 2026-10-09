@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.model.Choices
@@ -52,6 +54,12 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
     var signingOut by remember { mutableStateOf(false) }
     val editSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // picks up a verification done in the email app as soon as the person comes back
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshVerification()
+        onPauseOrDispose { }
+    }
+
     val toggleReminders: (Boolean) -> Unit = { on ->
         viewModel.setReminders(on)
         if (on && access.step == PermissionStep.REQUEST) access.resolve()
@@ -66,7 +74,11 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 .padding(horizontal = 20.dp)
         ) {
             ScreenHeader(title = "Profile")
-            AccountCard(state, onEdit = { editing = true })
+            AccountCard(
+                state = state,
+                onEdit = { editing = true },
+                onResend = { viewModel.resendVerification { message -> messenger.show(message) } }
+            )
 
             SectionLabel("Reminders")
             ShelfCard {
@@ -270,7 +282,7 @@ private fun syncTitle(state: ProfileUiState): String = when {
 }
 
 @Composable
-private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit) {
+private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit, onResend: () -> Unit) {
     val c = ShelfTheme.colors
     val initials = state.name.split(" ")
         .filter { it.isNotBlank() }
@@ -295,6 +307,18 @@ private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit) {
             TextButton(onClick = onEdit) {
                 Text("Edit", style = MaterialTheme.typography.labelLarge, color = c.primary)
             }
+        }
+        // a nudge rather than a gate, so testers with throwaway emails can still use the app
+        if (!state.emailVerified) {
+            CardDivider()
+            StatusRow(
+                icon = Icons.Filled.MarkEmailUnread,
+                title = "Email not verified",
+                status = "Open the verification link sent to your inbox to confirm it's yours",
+                actionLabel = "Resend",
+                onAction = onResend,
+                warning = true
+            )
         }
     }
 }

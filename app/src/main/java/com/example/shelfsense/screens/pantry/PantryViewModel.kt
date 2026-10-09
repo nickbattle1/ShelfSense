@@ -48,7 +48,7 @@ class PantryViewModel(
         val visible = items.tracked().filter { tracked ->
             val item = tracked.item
             val matchesFilter = selected.matches(
-                tracked.info.daysLeft, item.openedDate != null, item.storage, prefs.leadDays
+                tracked.info?.daysLeft, item.openedDate != null, item.storage, prefs.leadDays
             )
             val matchesText = needle.isEmpty() ||
                 item.name.contains(needle, ignoreCase = true) ||

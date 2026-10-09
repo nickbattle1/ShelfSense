@@ -10,10 +10,11 @@ enum class PantryFilter(val label: String) {
     PANTRY("Pantry"),
     FREEZER("Freezer");
 
-    // "use soon" follows the reminder lead time, so the list matches what the notification promised
-    fun matches(daysLeft: Long, opened: Boolean, storage: StorageLocation, leadDays: Int): Boolean = when (this) {
+    // "use soon" follows the reminder lead time, so the list matches what the notification promised.
+    // items with no date never count as due
+    fun matches(daysLeft: Long?, opened: Boolean, storage: StorageLocation, leadDays: Int): Boolean = when (this) {
         ALL -> true
-        SOON -> daysLeft <= leadDays
+        SOON -> daysLeft != null && daysLeft <= leadDays
         OPENED -> opened
         FRIDGE -> storage == StorageLocation.FRIDGE
         PANTRY -> storage == StorageLocation.PANTRY

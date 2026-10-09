@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PantryItemDao {
 
-    // active means still in the pantry: no outcome yet and not deleted
+    // active means still in the pantry: no outcome yet and not deleted. undated items go last
     @Query(
         "SELECT * FROM pantry_items WHERE outcome IS NULL AND deleted = 0 " +
-            "ORDER BY actionDate ASC, name COLLATE NOCASE ASC"
+            "ORDER BY actionDate IS NULL, actionDate ASC, name COLLATE NOCASE ASC"
     )
     fun observeActive(): Flow<List<PantryItem>>
 
@@ -52,6 +52,13 @@ interface PantryItemDao {
 
     @Query("DELETE FROM pantry_items")
     suspend fun clearAll()
+
+    @Query("SELECT id FROM pantry_items WHERE syncPending = 0")
+    suspend fun getSyncedIds(): List<String>
+
+    // the syncPending check keeps anything edited locally since the pull started
+    @Query("DELETE FROM pantry_items WHERE id IN (:ids) AND syncPending = 0")
+    suspend fun deleteSynced(ids: List<String>)
 
     // report queries. resolvedAt is epoch millis and the upper bound is exclusive
     @Query(

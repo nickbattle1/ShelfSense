@@ -17,7 +17,8 @@ data class ActionInfo(
 
 // the core rule from the proposal: an opened item is due on whichever comes first,
 // the printed date or the opening date plus the package's use within period.
-// nothing is inferred from the category, a missing instruction just means the printed date applies
+// nothing is inferred from the category, a missing instruction just means the printed date applies.
+// items that don't expire have no printed date, so they only get one from an opening deadline
 object ActionDates {
 
     const val URGENT_DAYS = 2L
@@ -30,21 +31,28 @@ object ActionDates {
             null
         }
 
-    fun actionDate(printedDate: LocalDate, openedDate: LocalDate?, useWithinDays: Int?): LocalDate {
-        val deadline = openingDeadline(openedDate, useWithinDays) ?: return printedDate
-        return if (deadline.isBefore(printedDate)) deadline else printedDate
+    // null means there's nothing to count down to
+    fun actionDate(printedDate: LocalDate?, openedDate: LocalDate?, useWithinDays: Int?): LocalDate? {
+        val deadline = openingDeadline(openedDate, useWithinDays)
+        return when {
+            printedDate == null -> deadline
+            deadline == null -> printedDate
+            deadline.isBefore(printedDate) -> deadline
+            else -> printedDate
+        }
     }
 
     fun evaluate(
-        printedDate: LocalDate,
+        printedDate: LocalDate?,
         openedDate: LocalDate?,
         useWithinDays: Int?,
         today: LocalDate = LocalDate.now()
-    ): ActionInfo {
+    ): ActionInfo? {
+        val action = actionDate(printedDate, openedDate, useWithinDays) ?: return null
         val deadline = openingDeadline(openedDate, useWithinDays)
-        val action = actionDate(printedDate, openedDate, useWithinDays)
         val driver = when {
             deadline == null -> DateDriver.PRINTED_DATE
+            printedDate == null -> DateDriver.OPENING_DEADLINE
             deadline.isBefore(printedDate) -> DateDriver.OPENING_DEADLINE
             deadline.isEqual(printedDate) -> DateDriver.SAME_DAY
             else -> DateDriver.PRINTED_DATE

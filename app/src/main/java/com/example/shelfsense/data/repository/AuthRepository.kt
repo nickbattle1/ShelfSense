@@ -2,6 +2,7 @@ package com.example.shelfsense.data.repository
 
 import android.content.Context
 import androidx.core.app.NotificationManagerCompat
+import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.worker.WorkScheduler
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
@@ -24,6 +25,9 @@ class AuthRepository(context: Context) {
 
     val currentUser: FirebaseUser? get() = auth.currentUser
 
+    // treated as verified when nobody is signed in, so nothing nags on the way out
+    val isEmailVerified: Boolean get() = auth.currentUser?.isEmailVerified ?: true
+
     suspend fun signIn(email: String, password: String) {
         auth.signInWithEmailAndPassword(email.trim(), password).await()
         // pulls the account's pantry down, which is how a second device gets the same items
@@ -33,8 +37,21 @@ class AuthRepository(context: Context) {
     suspend fun signUp(name: String, email: String, password: String, household: String) {
         val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
         user?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build())?.await()
+        // verification doesn't block sign in, a failed send just means Profile offers it again
+        runCatching { user?.sendEmailVerification()?.await() }
         settings.saveProfile(name, household, pending = true)
         WorkScheduler.requestSync(appContext)
+    }
+
+    suspend fun sendVerification() {
+        auth.currentUser?.sendEmailVerification()?.await()
+    }
+
+    // the verified flag only updates after a reload, e.g. when the person comes back from their inbox
+    suspend fun refreshVerified(): Boolean {
+        val user = auth.currentUser ?: return true
+        runCatching { user.reload().await() }
+        return auth.currentUser?.isEmailVerified ?: true
     }
 
     suspend fun sendPasswordReset(email: String) {
@@ -58,6 +75,7 @@ class AuthRepository(context: Context) {
         auth.signOut()
         PantryRepository(appContext).clearLocal()
         settings.clearAccount()
+        PhotoStore(appContext).clearAll()
         NotificationManagerCompat.from(appContext).cancelAll()
     }
 

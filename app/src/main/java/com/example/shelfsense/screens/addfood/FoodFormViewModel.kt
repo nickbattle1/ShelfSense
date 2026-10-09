@@ -54,6 +54,7 @@ data class FoodFormState(
     val barcode: String? = null,
     val brand: String? = null,
     val imageUrl: String? = null,
+    val photoPath: String? = null,
     val name: String = "",
     val category: FoodCategory? = null,
     val storage: StorageLocation? = null,
@@ -79,8 +80,13 @@ data class FoodFormState(
             name = if (name.isBlank()) "Enter a food name" else null,
             category = if (category == null) "Choose a category" else null,
             storage = if (storage == null) "Choose where it's stored" else null,
-            dateType = if (dateType == null) "Choose use by or best before" else null,
-            printedDate = if (printedDate == null) "A printed date is required" else null,
+            dateType = if (dateType == null) "Choose the type of date on the pack" else null,
+            // items that don't expire are the only ones allowed without a date
+            printedDate = when {
+                dateType?.needsDate == false || printedDate != null -> null
+                dateType == DateType.OWN_DATE -> "Choose the day you'd like to use it by"
+                else -> "A printed date is required"
+            },
             openedDate = when {
                 !isOpened -> null
                 opened == null -> "Choose the day it was opened"
@@ -96,10 +102,10 @@ data class FoodFormState(
         )
     }
 
-    // the live action date under the opened fields
+    // the live action date under the opened fields, null when there's nothing to show yet
     fun preview(): ActionInfo? {
-        val printed = printedDate ?: return null
         if (!isOpened) return null
+        val printed = if (dateType == DateType.NO_EXPIRY) null else printedDate ?: return null
         return ActionDates.evaluate(printed, openedDate, if (hasInstruction) useWithinDays else null)
     }
 }
@@ -150,6 +156,7 @@ class FoodFormViewModel(
                         barcode = item.barcode,
                         brand = item.brand,
                         imageUrl = item.imageUrl,
+                        photoPath = item.photoPath,
                         name = item.name,
                         category = item.category,
                         storage = item.storage,
@@ -207,6 +214,8 @@ class FoodFormViewModel(
 
     fun onPrintedDateChange(value: LocalDate) = edit { it.copy(printedDate = value) }
 
+    fun onPhotoChange(path: String?) = edit { it.copy(photoPath = path) }
+
     fun onOpenedChange(value: Boolean) = edit {
         it.copy(isOpened = value, openedDate = if (value) it.openedDate ?: LocalDate.now() else it.openedDate)
     }
@@ -227,16 +236,18 @@ class FoodFormViewModel(
         val category = state.category
         val storage = state.storage
         val dateType = state.dateType
-        val printed = state.printedDate
-        if (state.errors().any || category == null || storage == null || dateType == null || printed == null) {
+        if (state.errors().any || category == null || storage == null || dateType == null) {
             _uiState.update { it.copy(showErrors = true) }
             return
         }
+        // a date picked before switching to "doesn't expire" is dropped rather than saved
+        val printed = if (dateType.needsDate) state.printedDate else null
         val openedDate = if (state.isOpened) state.openedDate else null
         val useWithin = if (state.isOpened && state.hasInstruction) state.useWithinDays else null
         val base = original
         val item = base?.copy(
             name = state.name.trim(),
+            photoPath = state.photoPath,
             category = category,
             storage = storage,
             dateType = dateType,
@@ -248,6 +259,7 @@ class FoodFormViewModel(
             brand = state.brand,
             barcode = state.barcode,
             imageUrl = state.imageUrl,
+            photoPath = state.photoPath,
             category = category,
             storage = storage,
             dateType = dateType,

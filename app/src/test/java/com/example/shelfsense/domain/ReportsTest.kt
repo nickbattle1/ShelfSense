@@ -41,6 +41,12 @@ class ReportsTest {
     }
 
     @Test
+    fun undatedItemsAreNeverDueSoon() {
+        assertFalse(PantryFilter.SOON.matches(null, false, StorageLocation.PANTRY, leadDays = 30))
+        assertTrue(PantryFilter.PANTRY.matches(null, false, StorageLocation.PANTRY, leadDays = 2))
+    }
+
+    @Test
     fun unknownFilterNamesFallBackToAll() {
         assertEquals(PantryFilter.SOON, PantryFilter.from("SOON"))
         assertEquals(PantryFilter.ALL, PantryFilter.from("nonsense"))

@@ -10,6 +10,8 @@ import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
 import com.example.shelfsense.data.sample.SampleData
 import com.example.shelfsense.worker.WorkScheduler
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -19,6 +21,7 @@ import kotlinx.coroutines.launch
 data class ProfileUiState(
     val name: String = "",
     val email: String = "",
+    val emailVerified: Boolean = true,
     val household: String? = null,
     val remindersEnabled: Boolean = true,
     val leadDays: Int = 2,
@@ -38,16 +41,21 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val pantry = PantryRepository(application)
     private val settings = SettingsRepository(application)
 
+    // Firebase only refreshes this flag on request, so the screen asks again whenever it resumes
+    private val verified = MutableStateFlow(auth.isEmailVerified)
+
     // sync status comes straight from WorkManager, so the row updates while the worker runs
     val uiState: StateFlow<ProfileUiState> = combine(
         settings.settings,
         pantry.observePendingCount(),
-        WorkScheduler.observeSync(application)
-    ) { prefs, pending, work ->
+        WorkScheduler.observeSync(application),
+        verified
+    ) { prefs, pending, work, isVerified ->
         val user = auth.currentUser
         ProfileUiState(
             name = prefs.displayName ?: user?.displayName ?: "ShelfSense user",
             email = user?.email.orEmpty(),
+            emailVerified = isVerified,
             household = prefs.householdSize,
             remindersEnabled = prefs.remindersEnabled,
             leadDays = prefs.leadDays,
@@ -60,6 +68,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             notificationAsked = prefs.notificationAsked
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileUiState())
+
+    fun refreshVerification() {
+        viewModelScope.launch { verified.value = auth.refreshVerified() }
+    }
+
+    fun resendVerification(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val message = try {
+                auth.sendVerification()
+                "Verification email sent. Check your inbox."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AuthRepository.messageFor(e)
+            }
+            onResult(message)
+        }
+    }
 
     fun setReminders(enabled: Boolean) {
         viewModelScope.launch {

@@ -111,9 +111,13 @@ fun HomeScreen(
                     onAction = { onOpenPantry(if (state.soonCount > 0) PantryFilter.SOON else PantryFilter.ALL) }
                 )
             }
-            if (!state.loading && state.priority.isEmpty()) {
+            if (!state.loading && state.totalActive == 0) {
                 item(key = "empty") {
                     EmptyPantryCard(onAddFood)
+                }
+            } else if (!state.loading && state.priority.isEmpty()) {
+                item(key = "undated") {
+                    UndatedCard()
                 }
             }
             items(state.priority, key = { it.item.id }) { tracked ->
@@ -172,7 +176,7 @@ private fun LocationRow(counts: Map<StorageLocation, Int>, onOpen: (PantryFilter
 private fun UseFirstCard(tracked: TrackedItem, onClick: () -> Unit) {
     val c = ShelfTheme.colors
     val item = tracked.item
-    val style = urgencyStyle(tracked.info.urgency)
+    val style = urgencyStyle(tracked.info?.urgency)
     val opened = item.openedDate
     Row(
         Modifier
@@ -193,7 +197,7 @@ private fun UseFirstCard(tracked: TrackedItem, onClick: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FoodThumb(item.name, item.category, item.imageUrl)
+            FoodThumb(item.name, item.category, item.imageUrl, photoPath = item.photoPath)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -239,6 +243,20 @@ private fun EmptyPantryCard(onAddFood: () -> Unit) {
 }
 
 @Composable
+private fun UndatedCard() {
+    val c = ShelfTheme.colors
+    ShelfCard {
+        Text("Nothing to count down", style = MaterialTheme.typography.titleMedium, color = c.ink)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Everything in your pantry is marked as not expiring, so there's nothing that needs using first.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.muted
+        )
+    }
+}
+
+@Composable
 private fun ImpactCard(totals: OutcomeTotals, onOpenInsights: () -> Unit, modifier: Modifier = Modifier) {
     val c = ShelfTheme.colors
     val (title, message) = impactCopy(totals)
@@ -256,8 +274,9 @@ private fun ImpactCard(totals: OutcomeTotals, onOpenInsights: () -> Unit, modifi
                 Spacer(Modifier.height(6.dp))
                 Text(message, style = MaterialTheme.typography.bodyMedium, color = c.impactInk)
             }
+            // the all white leaves keep their contrast on the dark theme's gradient
             Image(
-                painter = painterResource(R.drawable.logo1),
+                painter = painterResource(if (c.isDark) R.drawable.logo1_dark else R.drawable.logo1),
                 contentDescription = null,
                 modifier = Modifier.size(44.dp)
             )

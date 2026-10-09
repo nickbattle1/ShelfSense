@@ -95,8 +95,9 @@ object ReminderNotifier {
         return true
     }
 
+    // due items always have a date, the fallback only covers a row edited mid check
     private fun lineFor(item: PantryItem, today: LocalDate): String =
-        ActionDates.daysLeftLabel(item.actionInfo(today).daysLeft)
+        item.actionInfo(today)?.let { ActionDates.daysLeftLabel(it.daysLeft) } ?: "Check it soon"
 
     // TaskStackBuilder gives the deep link a proper back stack, so Back from the item lands on Home
     private fun deepLink(context: Context, uri: String, requestCode: Int): PendingIntent? {

@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [PantryItem::class], version = 1, exportSchema = false)
+@Database(entities = [PantryItem::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class ShelfSenseDatabase : RoomDatabase() {
 
@@ -24,7 +24,8 @@ abstract class ShelfSenseDatabase : RoomDatabase() {
                     ShelfSenseDatabase::class.java,
                     "shelfsense.db"
                 )
-                    // still on schema version 1. a later version would need a proper migration
+                    // version 2 made dates optional and added photos. before release a rebuild is fine,
+                    // since the sync worker pulls everything back down from Firestore afterwards
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }

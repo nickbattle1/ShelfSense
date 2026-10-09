@@ -23,9 +23,9 @@ class ShelfSenseApplication : Application() {
             if (SettingsRepository(this@ShelfSenseApplication).settings.first().remindersEnabled) {
                 WorkScheduler.scheduleReminders(this@ShelfSenseApplication)
             }
-            // anything saved offline last session gets another chance to upload
+            // uploads anything saved offline, then pulls changes made on another phone
             if (FirebaseAuth.getInstance().currentUser != null) {
-                WorkScheduler.requestSync(this@ShelfSenseApplication)
+                WorkScheduler.requestSync(this@ShelfSenseApplication, pull = true)
             }
         }
     }

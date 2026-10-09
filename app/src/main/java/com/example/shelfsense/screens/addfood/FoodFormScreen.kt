@@ -1,19 +1,30 @@
 package com.example.shelfsense.screens.addfood
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -27,12 +38,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.model.DateType
 import com.example.shelfsense.data.model.FoodCategory
 import com.example.shelfsense.data.model.StorageLocation
+import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.domain.DateDriver
 import com.example.shelfsense.domain.DateExplainer
 import com.example.shelfsense.domain.Dates
 import com.example.shelfsense.ui.components.*
 import com.example.shelfsense.ui.theme.ShelfTheme
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 @Composable
 fun FoodFormScreen(
@@ -112,7 +125,7 @@ fun FoodFormScreen(
                 onAction = save,
                 actionEnabled = !state.saving && !blocked
             )
-            LookupSection(state, onRetry = viewModel::retryLookup)
+            LookupSection(state, onRetry = viewModel::retryLookup, onTryAnother = requestClose)
             if (state.duplicates > 0) {
                 InfoBanner(
                     title = "Already in your pantry",
@@ -139,6 +152,7 @@ fun FoodFormScreen(
                 imeAction = ImeAction.Done,
                 onImeAction = { focusManager.clearFocus() }
             )
+            PhotoSection(state = state, onPhoto = viewModel::onPhotoChange)
             DropdownField(
                 label = "Category",
                 options = FoodCategory.entries,
@@ -165,29 +179,34 @@ fun FoodFormScreen(
                 selected = state.dateType,
                 onSelect = viewModel::onDateTypeChange,
                 optionLabel = { it.label },
-                placeholder = "Use by or best before",
+                placeholder = "Use by, best before or no date",
                 error = shown.dateType,
-                helper = "Use by is about safety, best before is about quality"
+                helper = dateTypeHelper(state.dateType)
             )
-            DateField(
-                label = "Printed date",
-                value = state.printedDate,
-                onPicked = viewModel::onPrintedDateChange,
-                error = shown.printedDate,
-                helper = printedHelper(state, today),
-                earliest = today.minusYears(1),
-                latest = today.plusYears(10)
-            )
-            QuickDateRow(
-                options = listOf(
-                    "In 3 days" to today.plusDays(3),
-                    "In a week" to today.plusWeeks(1),
-                    "In 2 weeks" to today.plusWeeks(2),
-                    "In a month" to today.plusMonths(1)
-                ),
-                selected = state.printedDate,
-                onPick = viewModel::onPrintedDateChange
-            )
+            // hidden for food that doesn't expire, since there's no date to enter
+            AnimatedVisibility(visible = state.dateType?.needsDate != false) {
+                Column {
+                    DateField(
+                        label = state.dateType?.dateLabel ?: "Printed date",
+                        value = state.printedDate,
+                        onPicked = viewModel::onPrintedDateChange,
+                        error = shown.printedDate,
+                        helper = printedHelper(state, today),
+                        earliest = today.minusYears(1),
+                        latest = today.plusYears(10)
+                    )
+                    QuickDateRow(
+                        options = listOf(
+                            "In 3 days" to today.plusDays(3),
+                            "In a week" to today.plusWeeks(1),
+                            "In 2 weeks" to today.plusWeeks(2),
+                            "In a month" to today.plusMonths(1)
+                        ),
+                        selected = state.printedDate,
+                        onPick = viewModel::onPrintedDateChange
+                    )
+                }
+            }
             SectionLabel("Has this been opened?")
             Segmented(
                 options = listOf("No", "Yes"),
@@ -237,19 +256,28 @@ fun FoodFormScreen(
     }
 }
 
+private fun dateTypeHelper(dateType: DateType?): String = when (dateType) {
+    DateType.OWN_DATE -> "For fresh food with nothing printed, you pick the date"
+    DateType.NO_EXPIRY -> "For honey, salt, spirits and other food that keeps indefinitely"
+    else -> "Use by is about safety, best before is about quality"
+}
+
 private fun printedHelper(state: FoodFormState, today: LocalDate): String? {
     val printed = state.printedDate
     return when {
         printed != null && printed.isBefore(today) -> "This date has already passed"
-        printed == null && (state.category == FoodCategory.FRUIT_VEG || state.category == FoodCategory.LEFTOVERS) ->
-            "No printed date? Choose the day you'd like to use it by"
+        state.dateType == DateType.OWN_DATE -> "Nothing on the pack, so pick when you'd like to use it by"
+        printed == null && state.dateType == null &&
+            (state.category == FoodCategory.FRUIT_VEG || state.category == FoodCategory.LEFTOVERS) ->
+            "No date on the pack? Choose that option under Date type"
         else -> null
     }
 }
 
 @Composable
-private fun LookupSection(state: FoodFormState, onRetry: () -> Unit) {
+private fun LookupSection(state: FoodFormState, onRetry: () -> Unit, onTryAnother: () -> Unit) {
     val c = ShelfTheme.colors
+    val code = state.barcode.orEmpty()
     when (val lookup = state.lookup) {
         LookupState.None -> Unit
         LookupState.Loading -> {
@@ -258,7 +286,7 @@ private fun LookupSection(state: FoodFormState, onRetry: () -> Unit) {
                     CircularProgressIndicator(Modifier.size(22.dp), color = c.primary, strokeWidth = 2.5.dp)
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("Looking up ${state.barcode.orEmpty()}", style = MaterialTheme.typography.labelLarge, color = c.ink)
+                        Text("Looking up $code", style = MaterialTheme.typography.labelLarge, color = c.ink)
                         Text("Checking Open Food Facts…", style = MaterialTheme.typography.labelSmall, color = c.muted)
                     }
                 }
@@ -298,13 +326,24 @@ private fun LookupSection(state: FoodFormState, onRetry: () -> Unit) {
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            // a misread barcode can still match a real product, so there's always a way back
+            TextButton(onClick = onTryAnother) {
+                Text(
+                    "Not the right product? Try another barcode",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = c.primary
+                )
+            }
+            Spacer(Modifier.height(8.dp))
         }
         LookupState.NotFound -> {
             InfoBanner(
-                title = "No match for that barcode",
-                body = "Open Food Facts is contributed by the public, so some products are missing. Add it by hand below.",
-                kind = BannerKind.WARNING
+                title = "No match for $code",
+                body = "Check that number matches the one printed under the barcode. Open Food Facts is built by the public, " +
+                    "so some products are missing, but you can still add this one by hand below.",
+                kind = BannerKind.WARNING,
+                actionLabel = "Try another barcode",
+                onAction = onTryAnother
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -319,6 +358,103 @@ private fun LookupSection(state: FoodFormState, onRetry: () -> Unit) {
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+@Composable
+private fun PhotoSection(state: FoodFormState, onPhoto: (String?) -> Unit) {
+    val c = ShelfTheme.colors
+    val context = LocalContext.current
+    val messenger = LocalMessenger.current
+    val scope = rememberCoroutineScope()
+    val store = remember(context) { PhotoStore(context) }
+    // kept across rotation, since the camera app can stay open for a while
+    var pendingCapture by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val path = pendingCapture
+        pendingCapture = null
+        if (path != null) {
+            if (saved) onPhoto(path) else store.delete(path)
+        }
+    }
+    // the system photo picker needs no storage permission
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val path = store.importFrom(uri)
+                if (path != null) onPhoto(path) else messenger.show("That photo couldn't be added. Try another one.")
+            }
+        }
+    }
+
+    SectionLabel("Photo")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FoodThumb(
+            name = state.name,
+            category = state.category ?: FoodCategory.DRY_GOODS,
+            imageUrl = state.imageUrl,
+            photoPath = state.photoPath,
+            size = 64.dp
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                when {
+                    state.photoPath != null -> "Your photo"
+                    state.imageUrl != null -> "Photo from Open Food Facts"
+                    else -> "No photo yet"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = c.ink
+            )
+            Text(
+                "Photos you take or choose stay on this phone.",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.muted
+            )
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PhotoChip("Take photo", Icons.Filled.PhotoCamera) {
+            val file = store.newCaptureFile()
+            pendingCapture = file.absolutePath
+            try {
+                takePicture.launch(store.uriFor(file))
+            } catch (e: ActivityNotFoundException) {
+                pendingCapture = null
+                messenger.show("No camera app was found on this device.")
+            }
+        }
+        PhotoChip("Choose photo", Icons.Filled.PhotoLibrary) {
+            pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+        if (state.photoPath != null) {
+            PhotoChip("Remove", Icons.Filled.Delete) { onPhoto(null) }
+        }
+    }
+}
+
+@Composable
+private fun PhotoChip(label: String, icon: ImageVector, onClick: () -> Unit) {
+    val c = ShelfTheme.colors
+    AssistChip(
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        shape = RoundedCornerShape(16.dp),
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = c.surface,
+            labelColor = c.ink,
+            leadingIconContentColor = c.primary
+        ),
+        border = BorderStroke(1.dp, c.line)
+    )
 }
 
 @Composable
@@ -389,17 +525,24 @@ private fun OpenedSection(
 
 @Composable
 private fun ActionPreview(state: FoodFormState) {
-    val info = state.preview() ?: return
+    if (!state.isOpened) return
+    val info = state.preview()
+    // no date picked yet, so there's nothing to preview
+    if (info == null && state.dateType != DateType.NO_EXPIRY) return
     val c = ShelfTheme.colors
     val opened = state.openedDate
     val days = state.useWithinDays
+    val other = if (state.dateType == DateType.OWN_DATE) "the date you chose" else "the printed date"
     val note = when {
+        info == null -> "It doesn't expire and there's no after-opening instruction, so there's nothing to count down to."
         opened == null -> "Choose the day it was opened to see the action date."
-        !state.hasInstruction || days == null -> "No after-opening instruction, so the printed date applies."
+        !state.hasInstruction || days == null -> "No after-opening instruction, so $other applies."
+        state.dateType == DateType.NO_EXPIRY ->
+            "Opened ${Dates.dayMonth(opened)} plus ${DateExplainer.plural(days, "day")}, from the instruction on the pack."
         info.driver == DateDriver.OPENING_DEADLINE ->
-            "Opened ${Dates.dayMonth(opened)} plus ${DateExplainer.plural(days, "day")} comes before the printed date."
-        info.driver == DateDriver.SAME_DAY -> "The opening deadline and the printed date fall on the same day."
-        else -> "The printed date comes before the opening deadline, so it still applies."
+            "Opened ${Dates.dayMonth(opened)} plus ${DateExplainer.plural(days, "day")} comes before $other."
+        info.driver == DateDriver.SAME_DAY -> "The opening deadline and $other fall on the same day."
+        else -> "${other.replaceFirstChar { it.uppercase() }} comes before the opening deadline, so it still applies."
     }
     Column(
         Modifier
@@ -411,7 +554,11 @@ private fun ActionPreview(state: FoodFormState) {
     ) {
         Text("SHELFSENSE ACTION DATE", style = MaterialTheme.typography.labelSmall, color = c.primary)
         Spacer(Modifier.height(4.dp))
-        Text(Dates.long(info.actionDate), style = MaterialTheme.typography.titleLarge, color = c.primary)
+        Text(
+            info?.let { Dates.long(it.actionDate) } ?: "None",
+            style = MaterialTheme.typography.titleLarge,
+            color = c.primary
+        )
         Spacer(Modifier.height(4.dp))
         Text(note, style = MaterialTheme.typography.labelSmall, color = c.primary)
     }

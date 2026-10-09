@@ -31,6 +31,7 @@ import com.example.shelfsense.domain.ActionDates
 import com.example.shelfsense.domain.ActionInfo
 import com.example.shelfsense.domain.Urgency
 import com.example.shelfsense.ui.theme.ShelfTheme
+import java.io.File
 
 fun FoodCategory.icon(): ImageVector = when (this) {
     FoodCategory.FRUIT_VEG -> Icons.Filled.Eco
@@ -49,7 +50,7 @@ fun StorageLocation.icon(): ImageVector = when (this) {
     StorageLocation.PANTRY -> Icons.Filled.Inventory2
 }
 
-// the illustrated produce from the prototype, used when a fresh item has no product photo
+// the illustrated produce from the prototype, used when a fresh item has no photo
 private fun produceArtFor(name: String): Int? {
     val n = name.lowercase()
     return when {
@@ -60,18 +61,22 @@ private fun produceArtFor(name: String): Int? {
     }
 }
 
+// order of preference: the person's own photo, the Open Food Facts photo,
+// the prototype's produce art, then the category icon
 @Composable
 fun FoodThumb(
     name: String,
     category: FoodCategory,
     imageUrl: String?,
     modifier: Modifier = Modifier,
-    size: Dp = 48.dp
+    size: Dp = 48.dp,
+    photoPath: String? = null
 ) {
     val c = ShelfTheme.colors
     val art = remember(name) { produceArtFor(name) }
+    val model: Any? = photoPath?.let { File(it) } ?: imageUrl
     when {
-        imageUrl != null -> Box(
+        model != null -> Box(
             modifier
                 .size(size)
                 .clip(RoundedCornerShape(12.dp))
@@ -79,10 +84,10 @@ fun FoodThumb(
                 .border(1.dp, c.line, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
-            // the category icon sits underneath, so a slow or failed download still shows something
+            // the category icon sits underneath, so a slow, missing or failed image still shows something
             Icon(category.icon(), contentDescription = null, tint = c.muted, modifier = Modifier.size(size * 0.45f))
             AsyncImage(
-                model = imageUrl,
+                model = model,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize()
@@ -100,11 +105,13 @@ fun FoodThumb(
 
 data class UrgencyStyle(val fg: Color, val bg: Color, val icon: ImageVector)
 
+// a null urgency means the item has no date to count down to
 @Composable
 @ReadOnlyComposable
-fun urgencyStyle(urgency: Urgency): UrgencyStyle {
+fun urgencyStyle(urgency: Urgency?): UrgencyStyle {
     val c = ShelfTheme.colors
     return when (urgency) {
+        null -> UrgencyStyle(c.muted, c.chip, Icons.Filled.AllInclusive)
         Urgency.OVERDUE -> UrgencyStyle(c.urgent, c.urgentBg, Icons.Filled.Error)
         Urgency.TODAY, Urgency.URGENT -> UrgencyStyle(c.urgent, c.urgentBg, Icons.Filled.Warning)
         Urgency.SOON -> UrgencyStyle(c.warn, c.warnBg, Icons.Filled.Schedule)
@@ -114,11 +121,15 @@ fun urgencyStyle(urgency: Urgency): UrgencyStyle {
 
 // urgency always shows as words beside an icon, never colour alone
 @Composable
-fun UrgencyLabel(info: ActionInfo, modifier: Modifier = Modifier) {
-    val style = urgencyStyle(info.urgency)
+fun UrgencyLabel(info: ActionInfo?, modifier: Modifier = Modifier) {
+    val style = urgencyStyle(info?.urgency)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(style.icon, contentDescription = null, tint = style.fg, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(5.dp))
-        Text(ActionDates.daysLeftLabel(info.daysLeft), style = MaterialTheme.typography.bodyMedium, color = style.fg)
+        Text(
+            info?.let { ActionDates.daysLeftLabel(it.daysLeft) } ?: "No expiry",
+            style = MaterialTheme.typography.bodyMedium,
+            color = style.fg
+        )
     }
 }

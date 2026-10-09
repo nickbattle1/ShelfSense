@@ -110,22 +110,29 @@ class PantryRepository(context: Context) {
         return pending.size
     }
 
-    // a single read on sign in rather than a live listener, which keeps reads inside the free tier.
-    // when both copies changed, the one edited most recently wins
+    // runs on sign in and every app start rather than as a live listener, which keeps reads
+    // inside the free tier. when both copies changed, the one edited most recently wins
     suspend fun pullFromCloud(uid: String): Int {
         val snapshot = pantryCollection(uid).get(Source.SERVER).await()
+        val remoteIds = HashSet<String>()
         val newer = snapshot.documents.mapNotNull { doc ->
+            remoteIds += doc.id
             val remote = FirestoreMapper.fromDocument(doc) ?: return@mapNotNull null
             val local = dao.getById(remote.id)
             if (local == null || remote.updatedAt > local.updatedAt) {
                 remote.copy(
-                    actionDate = ActionDates.actionDate(remote.printedDate, remote.openedDate, remote.useWithinDays)
+                    actionDate = ActionDates.actionDate(remote.printedDate, remote.openedDate, remote.useWithinDays),
+                    // photos stay on the phone that took them, so the local one is kept
+                    photoPath = local?.photoPath
                 )
             } else {
                 null
             }
         }
         if (newer.isNotEmpty()) dao.upsertAll(newer)
+        // anything already synced that's missing from the cloud was deleted on another device
+        val removed = dao.getSyncedIds().filterNot { it in remoteIds }
+        removed.chunked(BATCH_LIMIT).forEach { dao.deleteSynced(it) }
         return newer.size
     }
 

@@ -22,14 +22,18 @@ data class PantryItem(
     val brand: String? = null,
     val barcode: String? = null,
     val imageUrl: String? = null,
+    // a photo taken or picked on this phone. it stays local, so it never goes to Firestore
+    val photoPath: String? = null,
     val category: FoodCategory,
     val storage: StorageLocation,
     val dateType: DateType,
-    val printedDate: LocalDate,
+    // null only when the item doesn't expire
+    val printedDate: LocalDate?,
     val openedDate: LocalDate? = null,
     val useWithinDays: Int? = null,
-    // stored so Room can sort and filter on it, the repository recalculates it on every write
-    val actionDate: LocalDate = printedDate,
+    // stored so Room can sort and filter on it, the repository recalculates it on every write.
+    // null when there's nothing to count down to
+    val actionDate: LocalDate? = printedDate,
     val outcome: Outcome? = null,
     val resolvedAt: Long? = null,
     val addedAt: Long = System.currentTimeMillis(),
@@ -39,5 +43,5 @@ data class PantryItem(
     val deleted: Boolean = false
 )
 
-fun PantryItem.actionInfo(today: LocalDate = LocalDate.now()): ActionInfo =
+fun PantryItem.actionInfo(today: LocalDate = LocalDate.now()): ActionInfo? =
     ActionDates.evaluate(printedDate, openedDate, useWithinDays, today)

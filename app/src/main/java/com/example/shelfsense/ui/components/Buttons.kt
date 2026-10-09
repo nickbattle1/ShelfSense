@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -76,20 +74,15 @@ fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(
         selected = selected,
         onClick = onClick,
+        // the solid fill shows the selection, and FilterChip tells TalkBack it's selected.
+        // no tick icon, since adding one widens the chip and shoves its neighbours along
         label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        // the tick means the selected chip doesn't rely on colour alone
-        leadingIcon = if (selected) {
-            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-        } else {
-            null
-        },
         shape = RoundedCornerShape(16.dp),
         colors = FilterChipDefaults.filterChipColors(
             containerColor = c.surface,
             labelColor = c.ink,
             selectedContainerColor = c.primary,
-            selectedLabelColor = c.onPrimary,
-            selectedLeadingIconColor = c.onPrimary
+            selectedLabelColor = c.onPrimary
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = true,

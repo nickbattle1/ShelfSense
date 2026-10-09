@@ -50,9 +50,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             loading = false,
             firstName = name?.trim()?.substringBefore(' ')?.ifBlank { null },
             counts = items.groupingBy { it.storage }.eachCount(),
-            priority = tracked.take(PRIORITY_COUNT),
+            // undated items have nothing to count down to, so they never take a spot here
+            priority = tracked.filter { it.info != null }.take(PRIORITY_COUNT),
             totalActive = items.size,
-            soonCount = tracked.count { it.info.daysLeft <= prefs.leadDays },
+            soonCount = tracked.count { (it.info?.daysLeft ?: Long.MAX_VALUE) <= prefs.leadDays },
             month = monthCounts.toTotals(),
             remindersEnabled = prefs.remindersEnabled,
             notificationAsked = prefs.notificationAsked,

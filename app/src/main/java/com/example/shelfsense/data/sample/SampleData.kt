@@ -65,6 +65,14 @@ object SampleData {
         PantryItem(
             name = "Leftover curry", category = FoodCategory.LEFTOVERS, storage = StorageLocation.FRIDGE,
             dateType = DateType.USE_BY, printedDate = today.plusDays(2)
+        ),
+        PantryItem(
+            name = "Apples", category = FoodCategory.FRUIT_VEG, storage = StorageLocation.FRIDGE,
+            dateType = DateType.OWN_DATE, printedDate = today.plusDays(8)
+        ),
+        PantryItem(
+            name = "Honey", category = FoodCategory.PANTRY_SAUCES, storage = StorageLocation.PANTRY,
+            dateType = DateType.NO_EXPIRY, printedDate = null
         )
     )
 

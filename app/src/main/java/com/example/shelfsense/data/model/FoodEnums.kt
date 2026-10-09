@@ -27,9 +27,18 @@ enum class StorageLocation(val label: String) {
     PANTRY("Pantry")
 }
 
-enum class DateType(val label: String, val phrase: String) {
-    USE_BY("Use by", "use-by"),
-    BEST_BEFORE("Best before", "best-before")
+enum class DateType(val label: String) {
+    USE_BY("Use by"),
+    BEST_BEFORE("Best before"),
+    OWN_DATE("No date on the pack"),
+    NO_EXPIRY("Doesn't expire");
+
+    // honey, salt and spirits keep indefinitely, so they're the only items saved without a date
+    val needsDate: Boolean get() = this != NO_EXPIRY
+
+    // what the date field is called in the form for each type
+    val dateLabel: String
+        get() = if (this == OWN_DATE) "Use it by" else "Printed date"
 }
 
 enum class Outcome(val label: String, val pastTense: String) {
