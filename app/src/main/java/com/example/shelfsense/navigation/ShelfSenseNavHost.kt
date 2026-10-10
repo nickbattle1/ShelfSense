@@ -38,6 +38,7 @@ import com.example.shelfsense.screens.addfood.ScanBarcodeScreen
 import com.example.shelfsense.screens.auth.ForgotPasswordScreen
 import com.example.shelfsense.screens.auth.LoginScreen
 import com.example.shelfsense.screens.auth.SignUpScreen
+import com.example.shelfsense.screens.auth.VerifyEmailScreen
 import com.example.shelfsense.screens.detail.FoodDetailScreen
 import com.example.shelfsense.screens.home.HomeScreen
 import com.example.shelfsense.screens.insights.InsightsScreen
@@ -48,7 +49,7 @@ import com.example.shelfsense.ui.components.LocalMessenger
 import com.example.shelfsense.ui.theme.ShelfTheme
 
 @Composable
-fun ShelfSenseApp(startSignedIn: Boolean, isSignedIn: () -> Boolean) {
+fun ShelfSenseApp(startRoute: String, hasAccess: () -> Boolean) {
     val c = ShelfTheme.colors
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -61,10 +62,10 @@ fun ShelfSenseApp(startSignedIn: Boolean, isSignedIn: () -> Boolean) {
     val showBottomBar = route in topLevelRoutes
     val showFab = route == Routes.HOME || route == Routes.PANTRY
 
-    // a signed out user can still arrive through an old notification, so send them to log in
+    // an old notification can still open the app for someone signed out or unverified, so send them to log in
     LaunchedEffect(destination) {
         val inMainGraph = destination?.hierarchy?.any { it.route == Routes.MAIN_GRAPH } == true
-        if (inMainGraph && !isSignedIn()) {
+        if (inMainGraph && !hasAccess()) {
             navController.navigate(Routes.AUTH_GRAPH) {
                 popUpTo(navController.graph.id) { inclusive = true }
             }
@@ -93,21 +94,35 @@ fun ShelfSenseApp(startSignedIn: Boolean, isSignedIn: () -> Boolean) {
             // this scaffold owns the system bar insets, so each screen's own scaffold uses zero insets
             NavHost(
                 navController = navController,
-                startDestination = if (startSignedIn) Routes.MAIN_GRAPH else Routes.AUTH_GRAPH,
+                startDestination = startRoute,
                 modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
             ) {
-                authGraph(navController)
+                authGraph(navController, hasAccess)
+                composable(Routes.VERIFY_EMAIL) {
+                    VerifyEmailScreen(
+                        onVerified = {
+                            navController.navigate(Routes.MAIN_GRAPH) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
+                        },
+                        onSignedOut = {
+                            navController.navigate(Routes.AUTH_GRAPH) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
+                        }
+                    )
+                }
                 mainGraph(navController)
             }
         }
     }
 }
 
-private fun NavGraphBuilder.authGraph(navController: NavHostController) {
+private fun NavGraphBuilder.authGraph(navController: NavHostController, hasAccess: () -> Boolean) {
     navigation(startDestination = Routes.LOGIN, route = Routes.AUTH_GRAPH) {
         composable(Routes.LOGIN) {
             LoginScreen(
-                onLoggedIn = { navController.enterApp() },
+                onLoggedIn = { navController.enterApp(hasAccess) },
                 onCreateAccount = { navController.navigate(Routes.SIGN_UP) },
                 onForgotPassword = { email -> navController.navigate(Routes.forgotPassword(email)) }
             )
@@ -115,7 +130,7 @@ private fun NavGraphBuilder.authGraph(navController: NavHostController) {
         composable(Routes.SIGN_UP) {
             SignUpScreen(
                 onBack = { navController.popBackStack() },
-                onSignedUp = { navController.enterApp() }
+                onSignedUp = { navController.enterApp(hasAccess) }
             )
         }
         composable(
@@ -232,8 +247,9 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
     }
 }
 
-private fun NavHostController.enterApp() {
-    navigate(Routes.MAIN_GRAPH) {
+// an unconfirmed email goes to the verify screen first, everyone else straight into the app
+private fun NavHostController.enterApp(hasAccess: () -> Boolean) {
+    navigate(if (hasAccess()) Routes.MAIN_GRAPH else Routes.VERIFY_EMAIL) {
         popUpTo(Routes.AUTH_GRAPH) { inclusive = true }
     }
 }

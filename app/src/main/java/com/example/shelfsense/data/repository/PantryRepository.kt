@@ -163,6 +163,18 @@ class PantryRepository(context: Context) {
         return doc.getString("displayName") to doc.getString("householdSize")
     }
 
+    // used when the account is deleted. Firestore doesn't remove documents under a deleted parent,
+    // so the pantry goes first in batches, then the profile document
+    suspend fun deleteCloudData(uid: String) {
+        val pantry = pantryCollection(uid).get(Source.SERVER).await()
+        pantry.documents.chunked(BATCH_LIMIT).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { batch.delete(it.reference) }
+            batch.commit().await()
+        }
+        firestore.collection("users").document(uid).delete().await()
+    }
+
     private fun pantryCollection(uid: String): CollectionReference =
         firestore.collection("users").document(uid).collection("pantry")
 

@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
                 onDispose { }
             }
             ShelfSenseTheme(darkTheme = darkTheme) {
-                ShelfSenseApp(startSignedIn = viewModel.startSignedIn, isSignedIn = viewModel::isSignedIn)
+                ShelfSenseApp(startRoute = viewModel.startRoute, hasAccess = viewModel::hasAccess)
             }
         }
     }

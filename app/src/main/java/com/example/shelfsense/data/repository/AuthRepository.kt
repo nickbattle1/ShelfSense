@@ -6,6 +6,7 @@ import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.worker.WorkScheduler
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -13,6 +14,7 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.tasks.await
 
 // Firebase email and password auth. profile details go to DataStore first and reach
@@ -25,8 +27,8 @@ class AuthRepository(context: Context) {
 
     val currentUser: FirebaseUser? get() = auth.currentUser
 
-    // treated as verified when nobody is signed in, so nothing nags on the way out
-    val isEmailVerified: Boolean get() = auth.currentUser?.isEmailVerified ?: true
+    // the main app needs a signed in user with a confirmed email
+    val hasVerifiedUser: Boolean get() = auth.currentUser?.isEmailVerified == true
 
     suspend fun signIn(email: String, password: String) {
         auth.signInWithEmailAndPassword(email.trim(), password).await()
@@ -37,7 +39,7 @@ class AuthRepository(context: Context) {
     suspend fun signUp(name: String, email: String, password: String, household: String) {
         val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
         user?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build())?.await()
-        // verification doesn't block sign in, a failed send just means Profile offers it again
+        // a failed send isn't fatal, the verify screen can always send another
         runCatching { user?.sendEmailVerification()?.await() }
         settings.saveProfile(name, household, pending = true)
         WorkScheduler.requestSync(appContext)
@@ -49,9 +51,9 @@ class AuthRepository(context: Context) {
 
     // the verified flag only updates after a reload, e.g. when the person comes back from their inbox
     suspend fun refreshVerified(): Boolean {
-        val user = auth.currentUser ?: return true
+        val user = auth.currentUser ?: return false
         runCatching { user.reload().await() }
-        return auth.currentUser?.isEmailVerified ?: true
+        return hasVerifiedUser
     }
 
     // an unknown email still reports success, so the screen never reveals which addresses have accounts
@@ -78,6 +80,35 @@ class AuthRepository(context: Context) {
     suspend fun signOut() {
         WorkScheduler.cancelSync(appContext)
         auth.signOut()
+        clearDeviceData()
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        reauthenticate(currentPassword).updatePassword(newPassword).await()
+    }
+
+    // the cloud copy goes first while the account can still reach it, then the account, then this phone's copy.
+    // if the account delete fails, a retry finds no cloud data left and simply finishes the job
+    suspend fun deleteAccount(currentPassword: String) {
+        val user = reauthenticate(currentPassword)
+        WorkScheduler.cancelSync(appContext)
+        PantryRepository(appContext).deleteCloudData(user.uid)
+        user.delete().await()
+        auth.signOut()
+        clearDeviceData()
+    }
+
+    // Firebase only allows a password change or account deletion straight after signing in,
+    // so both ask for the current password and sign in again first
+    private suspend fun reauthenticate(currentPassword: String): FirebaseUser {
+        val user = auth.currentUser ?: throw IllegalStateException("No one is signed in")
+        val email = user.email ?: throw IllegalStateException("This account has no email address")
+        user.reauthenticate(EmailAuthProvider.getCredential(email, currentPassword)).await()
+        return user
+    }
+
+    // everything this phone holds for the account, cleared on sign out and after deleting it
+    private suspend fun clearDeviceData() {
         PantryRepository(appContext).clearLocal()
         settings.clearAccount()
         PhotoStore(appContext).clearAll()
@@ -106,7 +137,21 @@ class AuthRepository(context: Context) {
                 } else {
                     "Email or password is incorrect."
                 }
+            is FirebaseFirestoreException ->
+                if (error.code == FirebaseFirestoreException.Code.UNAVAILABLE) {
+                    "You're offline. Connect to the internet and try again."
+                } else {
+                    "Something went wrong. Please try again."
+                }
             else -> "Something went wrong. Please try again."
         }
+
+        // after re-entering a password, a bad credential can only mean that password was wrong
+        fun reauthMessageFor(error: Throwable): String =
+            if (error is FirebaseAuthInvalidCredentialsException) {
+                "That password isn't right. Try again."
+            } else {
+                messageFor(error)
+            }
     }
 }

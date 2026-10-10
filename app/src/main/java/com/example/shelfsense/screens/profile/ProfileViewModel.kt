@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -19,7 +20,6 @@ import kotlinx.coroutines.launch
 data class ProfileUiState(
     val name: String = "",
     val email: String = "",
-    val emailVerified: Boolean = true,
     val household: String? = null,
     val remindersEnabled: Boolean = true,
     val leadDays: Int = 2,
@@ -32,27 +32,25 @@ data class ProfileUiState(
     val notificationAsked: Boolean = false
 )
 
+// progress and error for the change password and delete account sheets
+data class SheetStatus(val busy: Boolean = false, val error: String? = null)
+
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
 
     private val auth = AuthRepository(application)
     private val pantry = PantryRepository(application)
     private val settings = SettingsRepository(application)
 
-    // Firebase only refreshes this flag on request, so the screen asks again whenever it resumes
-    private val verified = MutableStateFlow(auth.isEmailVerified)
-
     // sync status follows the worker's state, so the row updates while it runs
     val uiState: StateFlow<ProfileUiState> = combine(
         settings.settings,
         pantry.observePendingCount(),
-        pantry.observeSyncing(),
-        verified
-    ) { prefs, pending, syncing, isVerified ->
+        pantry.observeSyncing()
+    ) { prefs, pending, syncing ->
         val user = auth.currentUser
         ProfileUiState(
             name = prefs.displayName ?: user?.displayName ?: "ShelfSense user",
             email = user?.email.orEmpty(),
-            emailVerified = isVerified,
             household = prefs.householdSize,
             remindersEnabled = prefs.remindersEnabled,
             leadDays = prefs.leadDays,
@@ -66,22 +64,48 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileUiState())
 
-    fun refreshVerification() {
-        viewModelScope.launch { verified.value = auth.refreshVerified() }
-    }
+    private val _passwordStatus = MutableStateFlow(SheetStatus())
+    val passwordStatus: StateFlow<SheetStatus> = _passwordStatus.asStateFlow()
 
-    fun resendVerification(onResult: (String) -> Unit) {
+    private val _deleteStatus = MutableStateFlow(SheetStatus())
+    val deleteStatus: StateFlow<SheetStatus> = _deleteStatus.asStateFlow()
+
+    fun changePassword(current: String, newPassword: String, onDone: () -> Unit) {
+        if (_passwordStatus.value.busy) return
+        _passwordStatus.value = SheetStatus(busy = true)
         viewModelScope.launch {
-            val message = try {
-                auth.sendVerification()
-                "Verification email sent. Check your inbox."
+            try {
+                auth.changePassword(current, newPassword)
+                _passwordStatus.value = SheetStatus()
+                onDone()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AuthRepository.messageFor(e)
+                _passwordStatus.value = SheetStatus(error = AuthRepository.reauthMessageFor(e))
             }
-            onResult(message)
         }
+    }
+
+    fun deleteAccount(password: String, onDone: () -> Unit) {
+        if (_deleteStatus.value.busy) return
+        _deleteStatus.value = SheetStatus(busy = true)
+        viewModelScope.launch {
+            try {
+                auth.deleteAccount(password)
+                _deleteStatus.value = SheetStatus()
+                onDone()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _deleteStatus.value = SheetStatus(error = AuthRepository.reauthMessageFor(e))
+            }
+        }
+    }
+
+    // a sheet closed part way through shouldn't reopen with an old error
+    fun clearSheetStatus() {
+        _passwordStatus.value = SheetStatus()
+        _deleteStatus.value = SheetStatus()
     }
 
     fun setReminders(enabled: Boolean) {

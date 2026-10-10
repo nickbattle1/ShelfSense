@@ -2,6 +2,7 @@ package com.example.shelfsense.screens.profile
 
 import android.content.pm.ApplicationInfo
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -9,11 +10,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
@@ -21,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -31,7 +36,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.model.Choices
@@ -57,12 +61,12 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
     var signingOut by remember { mutableStateOf(false) }
     val editSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    // picks up a verification done in the email app as soon as the person comes back
-    LifecycleResumeEffect(Unit) {
-        viewModel.refreshVerification()
-        onPauseOrDispose { }
-    }
+    var changingPassword by rememberSaveable { mutableStateOf(false) }
+    var deletingAccount by rememberSaveable { mutableStateOf(false) }
+    val passwordSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val deleteSheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val passwordStatus by viewModel.passwordStatus.collectAsStateWithLifecycle()
+    val deleteStatus by viewModel.deleteStatus.collectAsStateWithLifecycle()
 
     val toggleReminders: (Boolean) -> Unit = { on ->
         viewModel.setReminders(on)
@@ -78,11 +82,7 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 .padding(horizontal = 20.dp)
         ) {
             ScreenHeader(title = "Profile")
-            AccountCard(
-                state = state,
-                onEdit = { editing = true },
-                onResend = { viewModel.resendVerification { message -> messenger.show(message) } }
-            )
+            AccountCard(state = state, onEdit = { editing = true })
 
             SectionLabel("Reminders")
             ShelfCard {
@@ -206,6 +206,24 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 }
             }
 
+            SectionLabel("Account")
+            ShelfCard {
+                ActionRow(
+                    icon = Icons.Filled.Lock,
+                    title = "Change password",
+                    subtitle = "Update the password you log in with",
+                    onClick = { changingPassword = true }
+                )
+                CardDivider()
+                ActionRow(
+                    icon = Icons.Filled.DeleteForever,
+                    title = "Delete account",
+                    subtitle = "Permanently removes your account, pantry and backup",
+                    onClick = { deletingAccount = true },
+                    destructive = true
+                )
+            }
+
             SectionLabel("About")
             ShelfCard {
                 Text("ShelfSense 1.0", style = MaterialTheme.typography.labelLarge, color = c.ink)
@@ -243,6 +261,62 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 },
                 onCancel = {
                     scope.launch { editSheet.hide() }.invokeOnCompletion { editing = false }
+                }
+            )
+        }
+    }
+
+    if (changingPassword) {
+        val close: () -> Unit = {
+            scope.launch { passwordSheet.hide() }.invokeOnCompletion {
+                changingPassword = false
+                viewModel.clearSheetStatus()
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                changingPassword = false
+                viewModel.clearSheetStatus()
+            },
+            sheetState = passwordSheet,
+            containerColor = c.surface
+        ) {
+            ChangePasswordSheet(
+                status = passwordStatus,
+                onSave = { current, newPassword ->
+                    viewModel.changePassword(current, newPassword) {
+                        close()
+                        messenger.show("Password changed")
+                    }
+                },
+                onCancel = close
+            )
+        }
+    }
+
+    if (deletingAccount) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                deletingAccount = false
+                viewModel.clearSheetStatus()
+            },
+            sheetState = deleteSheet,
+            containerColor = c.surface
+        ) {
+            DeleteAccountSheet(
+                status = deleteStatus,
+                onDelete = { password ->
+                    viewModel.deleteAccount(password) {
+                        deletingAccount = false
+                        messenger.show("Your account has been deleted")
+                        onSignedOut()
+                    }
+                },
+                onCancel = {
+                    scope.launch { deleteSheet.hide() }.invokeOnCompletion {
+                        deletingAccount = false
+                        viewModel.clearSheetStatus()
+                    }
                 }
             )
         }
@@ -294,7 +368,7 @@ private fun backupStatus(state: ProfileUiState): String = when {
 }
 
 @Composable
-private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit, onResend: () -> Unit) {
+private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit) {
     val c = ShelfTheme.colors
     val initials = state.name.split(" ")
         .filter { it.isNotBlank() }
@@ -331,18 +405,6 @@ private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit, onResend: () 
                 Text("Edit", style = MaterialTheme.typography.labelLarge, color = c.primary)
             }
         }
-        // a nudge rather than a gate, so testers with throwaway emails can still use the app
-        if (!state.emailVerified) {
-            CardDivider()
-            StatusRow(
-                icon = Icons.Filled.MarkEmailUnread,
-                title = "Email not verified",
-                status = "Open the verification link sent to your inbox to confirm it's yours",
-                actionLabel = "Resend",
-                onAction = onResend,
-                warning = true
-            )
-        }
     }
 }
 
@@ -361,6 +423,172 @@ private fun HouseholdTag(household: String) {
         Icon(Icons.Filled.Groups, contentDescription = null, tint = c.primary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text(household, style = MaterialTheme.typography.labelMedium, color = c.ink)
+    }
+}
+
+@Composable
+private fun ActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false
+) {
+    val c = ShelfTheme.colors
+    val tint = if (destructive) c.urgent else c.primary
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = if (destructive) c.urgent else c.ink)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = c.muted)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = c.muted)
+    }
+}
+
+// passwords live in plain remember rather than rememberSaveable, so they're never written to saved state
+@Composable
+private fun ChangePasswordSheet(status: SheetStatus, onSave: (String, String) -> Unit, onCancel: () -> Unit) {
+    val c = ShelfTheme.colors
+    var current by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var showErrors by remember { mutableStateOf(false) }
+    val currentError = if (current.isEmpty()) "Enter your current password" else null
+    val newError = AuthValidation.newPassword(newPassword)
+        ?: if (newPassword == current) "Choose a different password from your current one" else null
+    val confirmError = when {
+        confirm.isEmpty() -> "Re-enter your new password"
+        confirm != newPassword -> "Passwords do not match"
+        else -> null
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp)
+    ) {
+        Text(
+            "Change password",
+            style = MaterialTheme.typography.titleLarge,
+            color = c.ink,
+            modifier = Modifier.semantics { heading() }
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "For your security, enter your current password before choosing a new one.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.muted
+        )
+        Spacer(Modifier.height(16.dp))
+        status.error?.let { message ->
+            InfoBanner(title = message, kind = BannerKind.ERROR)
+            Spacer(Modifier.height(16.dp))
+        }
+        TextFieldRow(
+            label = "Current password",
+            value = current,
+            onValueChange = { current = it },
+            placeholder = "Enter your current password",
+            error = if (showErrors) currentError else null,
+            isPassword = true,
+            autofill = ContentType.Password,
+            maxLength = 100
+        )
+        TextFieldRow(
+            label = "New password",
+            value = newPassword,
+            onValueChange = { newPassword = it },
+            placeholder = "At least 8 characters",
+            error = if (showErrors) newError else null,
+            helper = "Use at least 8 characters, including a letter and a number",
+            isPassword = true,
+            autofill = ContentType.NewPassword,
+            maxLength = 100
+        )
+        TextFieldRow(
+            label = "Confirm new password",
+            value = confirm,
+            onValueChange = { confirm = it },
+            placeholder = "Re-enter your new password",
+            error = if (showErrors) confirmError else null,
+            isPassword = true,
+            imeAction = ImeAction.Done,
+            autofill = ContentType.NewPassword,
+            maxLength = 100
+        )
+        Spacer(Modifier.height(8.dp))
+        PrimaryButton("Change password", loading = status.busy, onClick = {
+            showErrors = true
+            if (currentError == null && newError == null && confirmError == null) onSave(current, newPassword)
+        })
+        Spacer(Modifier.height(10.dp))
+        SecondaryButton("Cancel", onClick = onCancel)
+    }
+}
+
+@Composable
+private fun DeleteAccountSheet(status: SheetStatus, onDelete: (String) -> Unit, onCancel: () -> Unit) {
+    val c = ShelfTheme.colors
+    var password by remember { mutableStateOf("") }
+    var showErrors by remember { mutableStateOf(false) }
+    val passwordError = if (password.isEmpty()) "Enter your password to confirm" else null
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp)
+    ) {
+        Text(
+            "Delete your account?",
+            style = MaterialTheme.typography.titleLarge,
+            color = c.ink,
+            modifier = Modifier.semantics { heading() }
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "This permanently deletes your account, every item in your pantry, your history and the backup in the cloud. It can't be undone.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.muted
+        )
+        Spacer(Modifier.height(16.dp))
+        status.error?.let { message ->
+            InfoBanner(title = message, kind = BannerKind.ERROR)
+            Spacer(Modifier.height(16.dp))
+        }
+        TextFieldRow(
+            label = "Password",
+            value = password,
+            onValueChange = { password = it },
+            placeholder = "Enter your password",
+            error = if (showErrors) passwordError else null,
+            isPassword = true,
+            imeAction = ImeAction.Done,
+            autofill = ContentType.Password,
+            maxLength = 100
+        )
+        Spacer(Modifier.height(8.dp))
+        PrimaryButton("Delete account", loading = status.busy, destructive = true, onClick = {
+            showErrors = true
+            if (passwordError == null) onDelete(password)
+        })
+        Spacer(Modifier.height(10.dp))
+        SecondaryButton("Keep my account", onClick = onCancel)
     }
 }
 

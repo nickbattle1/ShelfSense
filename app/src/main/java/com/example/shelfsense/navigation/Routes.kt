@@ -12,6 +12,8 @@ object Routes {
     const val LOGIN = "login"
     const val SIGN_UP = "signup"
     const val FORGOT_PASSWORD = "forgot?email={email}"
+    // sits outside both graphs, between signing in and the app itself
+    const val VERIFY_EMAIL = "verify"
 
     const val HOME = "home"
     const val PANTRY = "pantry?filter={filter}"

@@ -20,17 +20,21 @@ fun PrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    loading: Boolean = false
+    loading: Boolean = false,
+    destructive: Boolean = false
 ) {
     val c = ShelfTheme.colors
+    // red for actions that can't be undone, so they never look like an ordinary save
+    val container = if (destructive) c.urgent else c.primary
+    val content = if (destructive) MaterialTheme.colorScheme.onError else c.onPrimary
     Button(
         // stays enabled while loading so the colour doesn't flash grey, repeat taps are just ignored
         onClick = { if (!loading) onClick() },
         enabled = enabled,
         shape = RoundedCornerShape(25.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = c.primary,
-            contentColor = c.onPrimary,
+            containerColor = container,
+            contentColor = content,
             disabledContainerColor = c.disabled,
             disabledContentColor = c.muted
         ),
@@ -40,7 +44,7 @@ fun PrimaryButton(
             .semantics { if (loading) stateDescription = "Working" }
     ) {
         if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = c.onPrimary, strokeWidth = 2.dp)
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = content, strokeWidth = 2.dp)
         } else {
             Text(text, style = MaterialTheme.typography.labelLarge)
         }

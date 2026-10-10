@@ -21,7 +21,6 @@ import com.example.shelfsense.data.model.Choices
 import com.example.shelfsense.ui.components.BannerKind
 import com.example.shelfsense.ui.components.DropdownField
 import com.example.shelfsense.ui.components.InfoBanner
-import com.example.shelfsense.ui.components.LocalMessenger
 import com.example.shelfsense.ui.components.PrimaryButton
 import com.example.shelfsense.ui.components.ScreenHeader
 import com.example.shelfsense.ui.components.TextFieldRow
@@ -36,13 +35,9 @@ fun SignUpScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val c = ShelfTheme.colors
     val focusManager = LocalFocusManager.current
-    val messenger = LocalMessenger.current
 
     LaunchedEffect(state.done) {
-        if (state.done) {
-            messenger.show("Account created. Check your inbox to verify your email.")
-            onSignedUp()
-        }
+        if (state.done) onSignedUp()
     }
 
     AuthScaffold {
