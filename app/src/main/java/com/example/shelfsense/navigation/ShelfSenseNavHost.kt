@@ -19,9 +19,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -81,7 +83,7 @@ fun ShelfSenseApp(startRoute: String, hasAccess: () -> Boolean) {
             floatingActionButton = {
                 AnimatedVisibility(visible = showFab, enter = scaleIn(), exit = scaleOut()) {
                     FloatingActionButton(
-                        onClick = { navController.navigate(Routes.ADD_FOOD) },
+                        onClick = { navController.goTo(Routes.ADD_FOOD) },
                         containerColor = c.primary,
                         contentColor = c.onPrimary
                     ) {
@@ -123,13 +125,13 @@ private fun NavGraphBuilder.authGraph(navController: NavHostController, hasAcces
         composable(Routes.LOGIN) {
             LoginScreen(
                 onLoggedIn = { navController.enterApp(hasAccess) },
-                onCreateAccount = { navController.navigate(Routes.SIGN_UP) },
-                onForgotPassword = { email -> navController.navigate(Routes.forgotPassword(email)) }
+                onCreateAccount = { navController.goTo(Routes.SIGN_UP) },
+                onForgotPassword = { email -> navController.goTo(Routes.forgotPassword(email)) }
             )
         }
         composable(Routes.SIGN_UP) {
             SignUpScreen(
-                onBack = { navController.popBackStack() },
+                onBack = { navController.goBack() },
                 onSignedUp = { navController.enterApp(hasAccess) }
             )
         }
@@ -142,7 +144,7 @@ private fun NavGraphBuilder.authGraph(navController: NavHostController, hasAcces
                 }
             )
         ) {
-            ForgotPasswordScreen(onBack = { navController.popBackStack() })
+            ForgotPasswordScreen(onBack = { navController.goBack() })
         }
     }
 }
@@ -151,10 +153,10 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
     navigation(startDestination = Routes.HOME, route = Routes.MAIN_GRAPH) {
         composable(Routes.HOME) {
             HomeScreen(
-                onOpenItem = { id -> navController.navigate(Routes.detail(id)) },
+                onOpenItem = { id -> navController.goTo(Routes.detail(id)) },
                 onOpenPantry = { filter -> navController.openTab(Routes.pantry(filter)) },
                 onOpenInsights = { navController.openTab(Routes.INSIGHTS) },
-                onAddFood = { navController.navigate(Routes.ADD_FOOD) }
+                onAddFood = { navController.goTo(Routes.ADD_FOOD) }
             )
         }
         composable(
@@ -168,8 +170,8 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
             deepLinks = listOf(navDeepLink { uriPattern = Routes.DEEP_LINK_PANTRY })
         ) {
             PantryScreen(
-                onOpenItem = { id -> navController.navigate(Routes.detail(id)) },
-                onAddFood = { navController.navigate(Routes.ADD_FOOD) }
+                onOpenItem = { id -> navController.goTo(Routes.detail(id)) },
+                onAddFood = { navController.goTo(Routes.ADD_FOOD) }
             )
         }
         composable(Routes.INSIGHTS) {
@@ -186,18 +188,19 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
         }
         composable(Routes.ADD_FOOD) {
             AddFoodScreen(
-                onBack = { navController.popBackStack() },
-                onScan = { navController.navigate(Routes.SCAN) },
-                onEnterBarcode = { navController.navigate(Routes.ENTER_BARCODE) },
-                onManual = { navController.navigate(Routes.foodForm()) }
+                onBack = { navController.goBack() },
+                onScan = { navController.goTo(Routes.SCAN) },
+                onEnterBarcode = { navController.goTo(Routes.ENTER_BARCODE) },
+                onManual = { navController.goTo(Routes.foodForm()) }
             )
         }
         composable(Routes.SCAN) {
             ScanBarcodeScreen(
-                onBack = { navController.popBackStack() },
+                onBack = { navController.goBack() },
+                // not guarded, the scan result can arrive a moment before this screen is resumed again
                 onScanned = { code -> navController.navigate(Routes.foodForm(barcode = code)) },
                 onTypeInstead = {
-                    navController.navigate(Routes.ENTER_BARCODE) {
+                    navController.goTo(Routes.ENTER_BARCODE) {
                         popUpTo(Routes.SCAN) { inclusive = true }
                     }
                 }
@@ -205,8 +208,8 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
         }
         composable(Routes.ENTER_BARCODE) {
             EnterBarcodeScreen(
-                onBack = { navController.popBackStack() },
-                onLookUp = { code -> navController.navigate(Routes.foodForm(barcode = code)) }
+                onBack = { navController.goBack() },
+                onLookUp = { code -> navController.goTo(Routes.foodForm(barcode = code)) }
             )
         }
         composable(
@@ -225,7 +228,7 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
             )
         ) {
             FoodFormScreen(
-                onCancel = { navController.popBackStack() },
+                onCancel = { navController.goBack() },
                 onSaved = {
                     // a new item returns to wherever Add food was opened from, an edit returns to its detail screen
                     if (!navController.popBackStack(Routes.ADD_FOOD, inclusive = true)) {
@@ -240,8 +243,8 @@ private fun NavGraphBuilder.mainGraph(navController: NavHostController) {
             deepLinks = listOf(navDeepLink { uriPattern = Routes.DEEP_LINK_ITEM })
         ) {
             FoodDetailScreen(
-                onBack = { navController.popBackStack() },
-                onEdit = { id -> navController.navigate(Routes.foodForm(itemId = id)) }
+                onBack = { navController.goBack() },
+                onEdit = { id -> navController.goTo(Routes.foodForm(itemId = id)) }
             )
         }
     }
@@ -256,8 +259,22 @@ private fun NavHostController.enterApp(hasAccess: () -> Boolean) {
 
 // Home's shortcuts behave like tapping the tab, so the bottom bar stays in step
 private fun NavHostController.openTab(route: String) {
+    if (!settled()) return
     navigate(route) {
         popUpTo(Routes.HOME) { saveState = true }
         launchSingleTop = true
     }
+}
+
+// a second tap can land while the first screen change is still animating, before the new top screen is resumed.
+// without this a double tap on Back pops Home as well and leaves a blank screen, or a double tap opens a screen twice
+private fun NavHostController.settled(): Boolean =
+    currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED
+
+private fun NavHostController.goBack() {
+    if (settled()) popBackStack()
+}
+
+private fun NavHostController.goTo(route: String, builder: NavOptionsBuilder.() -> Unit = {}) {
+    if (settled()) navigate(route, builder)
 }

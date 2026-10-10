@@ -37,12 +37,21 @@ class FoodDetailViewModel(
         .map { item -> DetailUiState(loading = false, item = item, info = item?.actionInfo()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailUiState())
 
+    // stops a quick double tap recording an outcome or a delete twice
+    private var busy = false
+
     // the write finishes before onDone runs, so navigating back can't cut it short
     fun recordOutcome(outcome: Outcome, onDone: (PantryItem) -> Unit) {
         val item = uiState.value.item ?: return
+        if (busy) return
+        busy = true
         viewModelScope.launch {
-            pantry.recordOutcome(item, outcome)
-            onDone(item)
+            try {
+                pantry.recordOutcome(item, outcome)
+                onDone(item)
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -53,9 +62,15 @@ class FoodDetailViewModel(
 
     fun delete(onDone: (PantryItem) -> Unit) {
         val item = uiState.value.item ?: return
+        if (busy) return
+        busy = true
         viewModelScope.launch {
-            pantry.delete(item)
-            onDone(item)
+            try {
+                pantry.delete(item)
+                onDone(item)
+            } finally {
+                busy = false
+            }
         }
     }
 
