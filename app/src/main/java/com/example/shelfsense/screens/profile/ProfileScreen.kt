@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -22,10 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -141,18 +145,20 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 )
             }
 
-            SectionLabel("Permissions and sync")
+            SectionLabel("Notifications and backup")
             ShelfCard {
+                // android only lets an app ask for notifications, so switching them off happens on the
+                // system page. the reminders switch above is the in-app on and off
                 StatusRow(
                     icon = if (access.allowed) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
                     title = "Notifications",
                     status = if (access.allowed) "Notifications allowed" else "Notifications are off, so reminders can't appear",
                     actionLabel = when (access.step) {
-                        PermissionStep.NONE -> null
+                        PermissionStep.NONE -> "Manage"
                         PermissionStep.REQUEST -> "Allow"
                         PermissionStep.OPEN_SETTINGS -> "Open settings"
                     },
-                    onAction = access::resolve,
+                    onAction = { if (access.allowed) access.openSettings() else access.resolve() },
                     warning = !access.allowed
                 )
                 CardDivider()
@@ -162,14 +168,12 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                         state.pendingCount > 0 -> Icons.Filled.CloudUpload
                         else -> Icons.Filled.CloudDone
                     },
-                    title = syncTitle(state),
-                    status = state.lastSync
-                        ?.let { "Last sync ${Dates.relative(it).replaceFirstChar { ch -> ch.lowercase() }}" }
-                        ?: "Syncs automatically whenever you're online",
+                    title = backupTitle(state),
+                    status = backupStatus(state),
                     actionLabel = if (state.syncing) null else "Sync now",
                     onAction = {
                         viewModel.syncNow()
-                        messenger.show("Syncing with your account")
+                        messenger.show("Backing up, and fetching any changes from your other devices")
                     }
                 )
             }
@@ -186,10 +190,11 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
             }
 
             if (debuggable) {
-                SectionLabel("Testing")
+                SectionLabel("Sample data")
                 ShelfCard {
                     Text(
-                        "Load a sample pantry with six months of history to try the reports and reminders. Only shown in debug builds.",
+                        "Adds 13 pantry items and six months of past outcomes, so Insights has a trend to show. " +
+                            "Tapping it again resets the samples rather than doubling them.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.muted
                     )
@@ -273,12 +278,19 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
     }
 }
 
-private fun syncTitle(state: ProfileUiState): String = when {
-    state.syncing -> "Syncing…"
-    state.pendingCount == 1 -> "1 change waiting to upload"
-    state.pendingCount > 1 -> "${state.pendingCount} changes waiting to upload"
-    state.lastSync != null -> "All changes synced"
-    else -> "Not synced yet"
+// sync in plain words: the phone keeps the working copy and Firestore holds the backup
+private fun backupTitle(state: ProfileUiState): String = when {
+    state.syncing -> "Backing up…"
+    state.pendingCount == 1 -> "1 change not backed up yet"
+    state.pendingCount > 1 -> "${state.pendingCount} changes not backed up yet"
+    state.lastSync != null -> "Pantry backed up"
+    else -> "Not backed up yet"
+}
+
+private fun backupStatus(state: ProfileUiState): String = when {
+    state.pendingCount > 0 -> "Uploads by itself once you're online"
+    state.lastSync != null -> "Last synced ${Dates.relative(state.lastSync).replaceFirstChar { it.lowercase() }}"
+    else -> "Backs up to your account whenever you're online"
 }
 
 @Composable
@@ -291,18 +303,29 @@ private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit, onResend: () 
         .ifBlank { "?" }
     ShelfCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(52.dp).background(c.tint, CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(56.dp).background(c.tint, CircleShape), contentAlignment = Alignment.Center) {
                 Text(initials, style = MaterialTheme.typography.titleMedium, color = c.primary)
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(state.name, style = MaterialTheme.typography.titleMedium, color = c.ink)
+                Text(
+                    state.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = c.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (state.email.isNotBlank()) {
-                    Text(state.email, style = MaterialTheme.typography.bodyMedium, color = c.muted)
+                    Text(
+                        state.email,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
-                state.household?.let {
-                    Text("Household: $it", style = MaterialTheme.typography.labelSmall, color = c.muted)
-                }
+                state.household?.let { HouseholdTag(it) }
             }
             TextButton(onClick = onEdit) {
                 Text("Edit", style = MaterialTheme.typography.labelLarge, color = c.primary)
@@ -320,6 +343,24 @@ private fun AccountCard(state: ProfileUiState, onEdit: () -> Unit, onResend: () 
                 warning = true
             )
         }
+    }
+}
+
+// a small tag set apart from the name and email, so the three don't read as one block
+@Composable
+private fun HouseholdTag(household: String) {
+    val c = ShelfTheme.colors
+    Row(
+        Modifier
+            .padding(top = 10.dp)
+            .background(c.chip, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .semantics(mergeDescendants = true) { contentDescription = "Household size, $household" },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.Groups, contentDescription = null, tint = c.primary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(household, style = MaterialTheme.typography.labelMedium, color = c.ink)
     }
 }
 

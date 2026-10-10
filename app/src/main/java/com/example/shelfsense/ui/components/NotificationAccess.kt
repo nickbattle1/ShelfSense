@@ -28,15 +28,18 @@ class NotificationAccess(
     val allowed: Boolean,
     val step: PermissionStep,
     private val request: () -> Unit,
-    private val openSettings: () -> Unit
+    private val openSettingsPage: () -> Unit
 ) {
     fun resolve() {
         when (step) {
             PermissionStep.REQUEST -> request()
-            PermissionStep.OPEN_SETTINGS -> openSettings()
+            PermissionStep.OPEN_SETTINGS -> openSettingsPage()
             PermissionStep.NONE -> Unit
         }
     }
+
+    // android never lets an app switch its own notifications off, so this is the way there
+    fun openSettings() = openSettingsPage()
 }
 
 @Composable
@@ -76,7 +79,7 @@ fun rememberNotificationAccess(askedBefore: Boolean, onAsked: () -> Unit): Notif
                 launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         },
-        openSettings = {
+        openSettingsPage = {
             val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             context.startActivity(intent)

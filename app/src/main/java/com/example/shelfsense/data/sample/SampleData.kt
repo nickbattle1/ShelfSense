@@ -15,7 +15,10 @@ import kotlin.random.Random
 // normal repository path, so it lands in Room and syncs to Firestore like anything else
 object SampleData {
 
-    fun build(today: LocalDate = LocalDate.now()): List<PantryItem> = activeItems(today) + history(today)
+    // fixed ids, so loading twice rewrites the same rows instead of doubling them
+    fun build(today: LocalDate = LocalDate.now()): List<PantryItem> =
+        activeItems(today).mapIndexed { i, item -> item.copy(id = "sample-item-$i") } +
+            history(today).mapIndexed { i, item -> item.copy(id = "sample-history-$i") }
 
     private fun activeItems(today: LocalDate): List<PantryItem> = listOf(
         PantryItem(
