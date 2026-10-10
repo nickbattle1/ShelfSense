@@ -367,7 +367,8 @@ fun Segmented(
             Box(
                 Modifier
                     .weight(1f)
-                    .height(44.dp)
+                    // 48dp keeps each half at the minimum touch target, and the control lines up with the 56dp fields
+                    .height(48.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (on) c.primary else Color.Transparent)
                     .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(index) }),
