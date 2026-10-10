@@ -1,6 +1,7 @@
 package com.example.shelfsense.data.repository
 
 import android.content.Context
+import androidx.work.WorkInfo
 import com.example.shelfsense.data.local.CategoryCount
 import com.example.shelfsense.data.local.MonthlyOutcomeCount
 import com.example.shelfsense.data.local.OutcomeCount
@@ -17,6 +18,7 @@ import com.google.firebase.firestore.Source
 import java.time.LocalDate
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
@@ -42,6 +44,15 @@ class PantryRepository(context: Context) {
 
     fun observeMostDiscarded(from: Long, to: Long): Flow<CategoryCount?> =
         dao.observeMostDiscarded(from, to)
+
+    // Profile's "Sync now" pulls too, so changes made on another phone come down straight away
+    fun requestSync(pull: Boolean = false) {
+        WorkScheduler.requestSync(appContext, pull)
+    }
+
+    // true while the sync worker is running, for the status row on Profile
+    fun observeSyncing(): Flow<Boolean> =
+        WorkScheduler.observeSync(appContext).map { work -> work.any { it.state == WorkInfo.State.RUNNING } }
 
     suspend fun getItem(id: String): PantryItem? = dao.getById(id)
 

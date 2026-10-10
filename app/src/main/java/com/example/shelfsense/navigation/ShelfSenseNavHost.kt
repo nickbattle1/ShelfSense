@@ -46,10 +46,9 @@ import com.example.shelfsense.screens.profile.ProfileScreen
 import com.example.shelfsense.ui.components.AppMessenger
 import com.example.shelfsense.ui.components.LocalMessenger
 import com.example.shelfsense.ui.theme.ShelfTheme
-import com.google.firebase.auth.FirebaseAuth
 
 @Composable
-fun ShelfSenseApp(startSignedIn: Boolean) {
+fun ShelfSenseApp(startSignedIn: Boolean, isSignedIn: () -> Boolean) {
     val c = ShelfTheme.colors
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -65,7 +64,7 @@ fun ShelfSenseApp(startSignedIn: Boolean) {
     // a signed out user can still arrive through an old notification, so send them to log in
     LaunchedEffect(destination) {
         val inMainGraph = destination?.hierarchy?.any { it.route == Routes.MAIN_GRAPH } == true
-        if (inMainGraph && FirebaseAuth.getInstance().currentUser == null) {
+        if (inMainGraph && !isSignedIn()) {
             navController.navigate(Routes.AUTH_GRAPH) {
                 popUpTo(navController.graph.id) { inclusive = true }
             }

@@ -1,6 +1,7 @@
 package com.example.shelfsense.screens.addfood
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,7 @@ import com.example.shelfsense.data.model.Choices
 import com.example.shelfsense.data.model.DateType
 import com.example.shelfsense.data.model.FoodCategory
 import com.example.shelfsense.data.model.StorageLocation
+import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.ProductInfo
 import com.example.shelfsense.data.repository.ProductLookup
@@ -118,6 +120,7 @@ class FoodFormViewModel(
 
     private val pantry = PantryRepository(application)
     private val products = ProductRepository()
+    private val photos = PhotoStore(application)
     private val itemId: String? = savedStateHandle.get<String>(Routes.ARG_ITEM_ID)
     private val barcode: String? = savedStateHandle.get<String>(Routes.ARG_BARCODE)
     private var original: PantryItem? = null
@@ -215,6 +218,24 @@ class FoodFormViewModel(
     fun onPrintedDateChange(value: LocalDate) = edit { it.copy(printedDate = value) }
 
     fun onPhotoChange(path: String?) = edit { it.copy(photoPath = path) }
+
+    // a fresh file for the camera app, as a path to keep and a link the camera can write into
+    fun newPhotoTarget(): Pair<String, Uri> {
+        val file = photos.newCaptureFile()
+        return file.absolutePath to photos.uriFor(file)
+    }
+
+    fun onPhotoTaken(path: String, saved: Boolean) {
+        if (saved) onPhotoChange(path) else photos.delete(path)
+    }
+
+    // the picker's link only lasts a short while, so the image is copied into app storage first
+    fun importPhoto(uri: Uri, onFailed: () -> Unit) {
+        viewModelScope.launch {
+            val path = photos.importFrom(uri)
+            if (path != null) onPhotoChange(path) else onFailed()
+        }
+    }
 
     fun onOpenedChange(value: Boolean) = edit {
         it.copy(isOpened = value, openedDate = if (value) it.openedDate ?: LocalDate.now() else it.openedDate)

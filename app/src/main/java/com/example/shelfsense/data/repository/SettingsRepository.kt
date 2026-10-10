@@ -11,10 +11,12 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.shelfsense.data.model.ThemeMode
+import com.example.shelfsense.worker.WorkScheduler
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "shelfsense_settings")
@@ -36,7 +38,8 @@ data class AppSettings(
 // reminder preferences, the theme choice and a small cache of the signed in profile, kept in Preferences DataStore
 class SettingsRepository(context: Context) {
 
-    private val store = context.applicationContext.settingsStore
+    private val appContext = context.applicationContext
+    private val store = appContext.settingsStore
 
     val settings: Flow<AppSettings> = store.data
         .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
@@ -58,8 +61,20 @@ class SettingsRepository(context: Context) {
 
     val themeMode: Flow<ThemeMode> = settings.map { it.themeMode }.distinctUntilChanged()
 
+    // the daily check only exists while reminders are switched on
     suspend fun setRemindersEnabled(enabled: Boolean) {
         store.edit { it[REMINDERS_ENABLED] = enabled }
+        if (enabled) WorkScheduler.scheduleReminders(appContext) else WorkScheduler.cancelReminders(appContext)
+    }
+
+    // Profile's "Check now", which runs the same reminder worker once, straight away
+    fun checkRemindersNow() {
+        WorkScheduler.checkRemindersNow(appContext)
+    }
+
+    // called at app start. the scheduler uses KEEP, so an existing schedule is left alone
+    suspend fun restoreReminderSchedule() {
+        if (settings.first().remindersEnabled) WorkScheduler.scheduleReminders(appContext)
     }
 
     suspend fun setLeadDays(days: Int) {

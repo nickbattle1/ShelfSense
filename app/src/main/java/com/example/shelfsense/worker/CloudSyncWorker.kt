@@ -3,9 +3,9 @@ package com.example.shelfsense.worker
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.first
 class CloudSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val user = FirebaseAuth.getInstance().currentUser ?: return Result.success()
+        val user = AuthRepository(applicationContext).currentUser ?: return Result.success()
         val pantry = PantryRepository(applicationContext)
         val settings = SettingsRepository(applicationContext)
         return try {

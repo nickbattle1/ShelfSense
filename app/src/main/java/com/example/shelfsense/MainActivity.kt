@@ -6,25 +6,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfsense.data.model.ThemeMode
-import com.example.shelfsense.data.repository.SettingsRepository
 import com.example.shelfsense.navigation.ShelfSenseApp
 import com.example.shelfsense.ui.theme.ShelfSenseTheme
-import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val settings = SettingsRepository(applicationContext)
-        val signedIn = FirebaseAuth.getInstance().currentUser != null
 
         setContent {
-            val themeMode by settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val darkTheme = when (themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
                 onDispose { }
             }
             ShelfSenseTheme(darkTheme = darkTheme) {
-                ShelfSenseApp(startSignedIn = signedIn)
+                ShelfSenseApp(startSignedIn = viewModel.startSignedIn, isSignedIn = viewModel::isSignedIn)
             }
         }
     }

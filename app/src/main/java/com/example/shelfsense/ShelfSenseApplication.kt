@@ -1,14 +1,13 @@
 package com.example.shelfsense
 
 import android.app.Application
+import com.example.shelfsense.data.repository.AuthRepository
+import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
 import com.example.shelfsense.worker.ReminderNotifier
-import com.example.shelfsense.worker.WorkScheduler
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ShelfSenseApplication : Application() {
@@ -20,12 +19,10 @@ class ShelfSenseApplication : Application() {
         super.onCreate()
         ReminderNotifier.createChannel(this)
         applicationScope.launch {
-            if (SettingsRepository(this@ShelfSenseApplication).settings.first().remindersEnabled) {
-                WorkScheduler.scheduleReminders(this@ShelfSenseApplication)
-            }
+            SettingsRepository(this@ShelfSenseApplication).restoreReminderSchedule()
             // uploads anything saved offline, then pulls changes made on another phone
-            if (FirebaseAuth.getInstance().currentUser != null) {
-                WorkScheduler.requestSync(this@ShelfSenseApplication, pull = true)
+            if (AuthRepository(this@ShelfSenseApplication).currentUser != null) {
+                PantryRepository(this@ShelfSenseApplication).requestSync(pull = true)
             }
         }
     }

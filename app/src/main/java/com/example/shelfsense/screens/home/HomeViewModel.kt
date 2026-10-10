@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfsense.data.model.StorageLocation
+import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
 import com.example.shelfsense.domain.Dates
@@ -11,7 +12,6 @@ import com.example.shelfsense.domain.OutcomeTotals
 import com.example.shelfsense.domain.TrackedItem
 import com.example.shelfsense.domain.toTotals
 import com.example.shelfsense.domain.tracked
-import com.google.firebase.auth.FirebaseAuth
 import java.time.LocalDate
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +36,7 @@ data class HomeUiState(
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val auth = AuthRepository(application)
     private val pantry = PantryRepository(application)
     private val settings = SettingsRepository(application)
     private val monthStart = Dates.startOfDayMillis(LocalDate.now().withDayOfMonth(1))
@@ -49,7 +50,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // undated items have nothing to count down to, so they never appear here
         val dated = items.tracked().filter { it.info != null }
         val thisWeek = dated.filter { (it.info?.daysLeft ?: Long.MAX_VALUE) <= WINDOW_DAYS }
-        val name = prefs.displayName ?: FirebaseAuth.getInstance().currentUser?.displayName
+        val name = prefs.displayName ?: auth.currentUser?.displayName
         HomeUiState(
             loading = false,
             firstName = name?.trim()?.substringBefore(' ')?.ifBlank { null },

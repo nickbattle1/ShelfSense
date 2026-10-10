@@ -6,7 +6,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.navigation.Routes
-import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,9 +53,6 @@ class ForgotPasswordViewModel(
                 _uiState.update { it.copy(loading = false, sentTo = state.email.trim()) }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: FirebaseAuthInvalidUserException) {
-                // same message either way, so the screen never reveals which emails have accounts
-                _uiState.update { it.copy(loading = false, sentTo = state.email.trim()) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(loading = false, formError = AuthRepository.messageFor(e)) }
             }

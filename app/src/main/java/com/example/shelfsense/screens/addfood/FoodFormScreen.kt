@@ -1,6 +1,7 @@
 package com.example.shelfsense.screens.addfood
 
 import android.content.ActivityNotFoundException
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -24,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -38,14 +38,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.model.DateType
 import com.example.shelfsense.data.model.FoodCategory
 import com.example.shelfsense.data.model.StorageLocation
-import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.domain.DateDriver
 import com.example.shelfsense.domain.DateExplainer
 import com.example.shelfsense.domain.Dates
 import com.example.shelfsense.ui.components.*
 import com.example.shelfsense.ui.theme.ShelfTheme
 import java.time.LocalDate
-import kotlinx.coroutines.launch
 
 @Composable
 fun FoodFormScreen(
@@ -152,7 +150,15 @@ fun FoodFormScreen(
                 imeAction = ImeAction.Done,
                 onImeAction = { focusManager.clearFocus() }
             )
-            PhotoSection(state = state, onPhoto = viewModel::onPhotoChange)
+            PhotoSection(
+                state = state,
+                onNewTarget = viewModel::newPhotoTarget,
+                onTaken = viewModel::onPhotoTaken,
+                onPicked = { uri ->
+                    viewModel.importPhoto(uri) { messenger.show("That photo couldn't be added. Try another one.") }
+                },
+                onRemove = { viewModel.onPhotoChange(null) }
+            )
             DropdownField(
                 label = "Category",
                 options = FoodCategory.entries,
@@ -361,34 +367,31 @@ private fun LookupSection(state: FoodFormState, onRetry: () -> Unit, onTryAnothe
     }
 }
 
+// the launchers have to live in the UI, everything to do with storing the photo is in the ViewModel
 @Composable
-private fun PhotoSection(state: FoodFormState, onPhoto: (String?) -> Unit) {
+private fun PhotoSection(
+    state: FoodFormState,
+    onNewTarget: () -> Pair<String, Uri>,
+    onTaken: (String, Boolean) -> Unit,
+    onPicked: (Uri) -> Unit,
+    onRemove: () -> Unit
+) {
     val c = ShelfTheme.colors
-    val context = LocalContext.current
     val messenger = LocalMessenger.current
-    val scope = rememberCoroutineScope()
-    val store = remember(context) { PhotoStore(context) }
     // kept across rotation, since the camera app can stay open for a while
     var pendingCapture by rememberSaveable { mutableStateOf<String?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val path = pendingCapture
         pendingCapture = null
-        if (path != null) {
-            if (saved) onPhoto(path) else store.delete(path)
-        }
+        if (path != null) onTaken(path, saved)
     }
     // the system photo picker needs no storage permission
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val path = store.importFrom(uri)
-                if (path != null) onPhoto(path) else messenger.show("That photo couldn't be added. Try another one.")
-            }
-        }
+        if (uri != null) onPicked(uri)
     }
 
-    SectionLabel("Photo")
+    SectionLabel("Photo (optional)")
     Row(verticalAlignment = Alignment.CenterVertically) {
         FoodThumb(
             name = state.name,
@@ -424,10 +427,10 @@ private fun PhotoSection(state: FoodFormState, onPhoto: (String?) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         PhotoChip("Take photo", Icons.Filled.PhotoCamera) {
-            val file = store.newCaptureFile()
-            pendingCapture = file.absolutePath
+            val (path, uri) = onNewTarget()
+            pendingCapture = path
             try {
-                takePicture.launch(store.uriFor(file))
+                takePicture.launch(uri)
             } catch (e: ActivityNotFoundException) {
                 pendingCapture = null
                 messenger.show("No camera app was found on this device.")
@@ -437,7 +440,7 @@ private fun PhotoSection(state: FoodFormState, onPhoto: (String?) -> Unit) {
             pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
         if (state.photoPath != null) {
-            PhotoChip("Remove", Icons.Filled.Delete) { onPhoto(null) }
+            PhotoChip("Remove", Icons.Filled.Delete, onClick = onRemove)
         }
     }
 }

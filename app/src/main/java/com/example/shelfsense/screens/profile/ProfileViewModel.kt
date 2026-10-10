@@ -3,13 +3,11 @@ package com.example.shelfsense.screens.profile
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.WorkInfo
 import com.example.shelfsense.data.model.ThemeMode
 import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
 import com.example.shelfsense.data.sample.SampleData
-import com.example.shelfsense.worker.WorkScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,7 +34,6 @@ data class ProfileUiState(
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val app = application
     private val auth = AuthRepository(application)
     private val pantry = PantryRepository(application)
     private val settings = SettingsRepository(application)
@@ -44,13 +41,13 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     // Firebase only refreshes this flag on request, so the screen asks again whenever it resumes
     private val verified = MutableStateFlow(auth.isEmailVerified)
 
-    // sync status comes straight from WorkManager, so the row updates while the worker runs
+    // sync status follows the worker's state, so the row updates while it runs
     val uiState: StateFlow<ProfileUiState> = combine(
         settings.settings,
         pantry.observePendingCount(),
-        WorkScheduler.observeSync(application),
+        pantry.observeSyncing(),
         verified
-    ) { prefs, pending, work, isVerified ->
+    ) { prefs, pending, syncing, isVerified ->
         val user = auth.currentUser
         ProfileUiState(
             name = prefs.displayName ?: user?.displayName ?: "ShelfSense user",
@@ -63,7 +60,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             lastCheckCount = prefs.lastReminderCount,
             lastSync = prefs.lastSync,
             pendingCount = pending,
-            syncing = work.any { it.state == WorkInfo.State.RUNNING },
+            syncing = syncing,
             themeMode = prefs.themeMode,
             notificationAsked = prefs.notificationAsked
         )
@@ -88,10 +85,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setReminders(enabled: Boolean) {
-        viewModelScope.launch {
-            settings.setRemindersEnabled(enabled)
-            if (enabled) WorkScheduler.scheduleReminders(app) else WorkScheduler.cancelReminders(app)
-        }
+        viewModelScope.launch { settings.setRemindersEnabled(enabled) }
     }
 
     fun setLeadDays(days: Int) {
@@ -99,11 +93,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun checkNow() {
-        WorkScheduler.checkRemindersNow(app)
+        settings.checkRemindersNow()
     }
 
     fun syncNow() {
-        WorkScheduler.requestSync(app, pull = true)
+        pantry.requestSync(pull = true)
     }
 
     fun setTheme(mode: ThemeMode) {

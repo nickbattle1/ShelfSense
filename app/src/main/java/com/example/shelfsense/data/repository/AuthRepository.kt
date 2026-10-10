@@ -54,8 +54,13 @@ class AuthRepository(context: Context) {
         return auth.currentUser?.isEmailVerified ?: true
     }
 
+    // an unknown email still reports success, so the screen never reveals which addresses have accounts
     suspend fun sendPasswordReset(email: String) {
-        auth.sendPasswordResetEmail(email.trim()).await()
+        try {
+            auth.sendPasswordResetEmail(email.trim()).await()
+        } catch (e: FirebaseAuthInvalidUserException) {
+            // nothing to send, the person sees the same confirmation either way
+        }
     }
 
     suspend fun updateProfile(name: String, household: String) {
