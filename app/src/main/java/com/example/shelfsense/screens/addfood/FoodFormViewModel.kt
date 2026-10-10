@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 
 enum class FormMode { MANUAL, LOOKUP, EDIT }
 
+// matches the field's limit, and stays well inside the 100 characters Firestore's rules allow
+const val NAME_MAX = 60
+
 sealed interface LookupState {
     data object None : LookupState
     data object Loading : LookupState
@@ -79,7 +82,12 @@ data class FoodFormState(
         val opened = openedDate
         val days = useWithinDays
         return FormErrors(
-            name = if (name.isBlank()) "Enter a food name" else null,
+            // the field caps typing at 60, this also catches a long name saved before that cap existed
+            name = when {
+                name.isBlank() -> "Enter a food name"
+                name.trim().length > NAME_MAX -> "Keep the name to $NAME_MAX characters or fewer"
+                else -> null
+            },
             category = if (category == null) "Choose a category" else null,
             storage = if (storage == null) "Choose where it's stored" else null,
             dateType = if (dateType == null) "Choose the type of date on the pack" else null,

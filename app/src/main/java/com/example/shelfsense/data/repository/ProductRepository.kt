@@ -49,7 +49,9 @@ class ProductRepository(private val api: OpenFoodFactsApi = RetrofitClient.api) 
             .orEmpty()
         return ProductInfo(
             barcode = barcode,
-            name = withQuantity(baseName, quantity),
+            // the form caps names at 60 characters and Firestore rejects anything over 100,
+            // so a long name is trimmed here rather than stalling the sync batch it lands in
+            name = withQuantity(baseName, quantity).take(60).trim(),
             brand = brandName(),
             imageUrl = listOf(imageFrontSmallUrl, imageFrontUrl, imageSmallUrl, imageUrl)
                 .firstOrNull { !it.isNullOrBlank() },
