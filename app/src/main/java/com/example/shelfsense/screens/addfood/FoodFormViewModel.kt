@@ -19,6 +19,7 @@ import com.example.shelfsense.domain.ActionDates
 import com.example.shelfsense.domain.ActionInfo
 import com.example.shelfsense.navigation.Routes
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +72,7 @@ data class FoodFormState(
     val useWithinText: String = "",
     val showErrors: Boolean = false,
     val saving: Boolean = false,
+    val saveError: String? = null,
     val savedName: String? = null,
     val duplicates: Int = 0,
     val dirty: Boolean = false
@@ -256,7 +258,7 @@ class FoodFormViewModel(
     fun onUseWithinChange(value: String) = edit { it.copy(useWithinText = value.filter { ch -> ch.isDigit() }.take(3)) }
 
     private fun edit(change: (FoodFormState) -> FoodFormState) {
-        _uiState.update { change(it).copy(dirty = true) }
+        _uiState.update { change(it).copy(dirty = true, saveError = null) }
     }
 
     fun save() {
@@ -296,10 +298,17 @@ class FoodFormViewModel(
             openedDate = openedDate,
             useWithinDays = useWithin
         )
-        _uiState.update { it.copy(saving = true) }
+        _uiState.update { it.copy(saving = true, saveError = null) }
         viewModelScope.launch {
-            pantry.save(item)
-            _uiState.update { it.copy(saving = false, savedName = item.name, dirty = false) }
+            try {
+                pantry.save(item)
+                _uiState.update { it.copy(saving = false, savedName = item.name, dirty = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // nothing was written, so everything typed stays in the form for another go
+                _uiState.update { it.copy(saving = false, saveError = "That couldn't be saved. Try again.") }
+            }
         }
     }
 }

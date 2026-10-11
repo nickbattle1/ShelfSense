@@ -12,8 +12,12 @@ import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.domain.ActionInfo
 import com.example.shelfsense.navigation.Routes
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,6 +41,10 @@ class FoodDetailViewModel(
         .map { item -> DetailUiState(loading = false, item = item, info = item?.actionInfo()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DetailUiState())
 
+    // one-off messages for the snackbar when a write fails
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val errors: SharedFlow<String> = _errors.asSharedFlow()
+
     // stops a quick double tap recording an outcome or a delete twice
     private var busy = false
 
@@ -49,6 +57,10 @@ class FoodDetailViewModel(
             try {
                 pantry.recordOutcome(item, outcome)
                 onDone(item)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed()
             } finally {
                 busy = false
             }
@@ -57,7 +69,15 @@ class FoodDetailViewModel(
 
     fun markOpened(date: LocalDate, useWithinDays: Int?) {
         val item = uiState.value.item ?: return
-        viewModelScope.launch { pantry.markOpened(item, date, useWithinDays) }
+        viewModelScope.launch {
+            try {
+                pantry.markOpened(item, date, useWithinDays)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed()
+            }
+        }
     }
 
     fun delete(onDone: (PantryItem) -> Unit) {
@@ -68,14 +88,23 @@ class FoodDetailViewModel(
             try {
                 pantry.delete(item)
                 onDone(item)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed()
             } finally {
                 busy = false
             }
         }
     }
 
-    // runs on the application scope because this screen has closed by the time Undo is tapped
+    // runs on the application scope because this screen has closed by the time Undo is tapped.
+    // nothing is left on screen to report to, so a failed restore is dropped rather than crashing the app
     fun undo(snapshot: PantryItem) {
-        appScope.launch { pantry.restore(snapshot) }
+        appScope.launch { runCatching { pantry.restore(snapshot) } }
+    }
+
+    private fun failed() {
+        _errors.tryEmit("That didn't save. Try again.")
     }
 }

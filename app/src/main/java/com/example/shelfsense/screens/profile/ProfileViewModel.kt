@@ -7,6 +7,7 @@ import com.example.shelfsense.data.model.ThemeMode
 import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.SettingsRepository
+import com.example.shelfsense.data.repository.SyncState
 import com.example.shelfsense.data.sample.SampleData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ data class ProfileUiState(
     val lastSync: Long? = null,
     val pendingCount: Int = 0,
     val syncing: Boolean = false,
+    val syncFailed: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val notificationAsked: Boolean = false
 )
@@ -45,8 +47,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<ProfileUiState> = combine(
         settings.settings,
         pantry.observePendingCount(),
-        pantry.observeSyncing()
-    ) { prefs, pending, syncing ->
+        pantry.observeSyncState()
+    ) { prefs, pending, sync ->
         val user = auth.currentUser
         ProfileUiState(
             name = prefs.displayName ?: user?.displayName ?: "ShelfSense user",
@@ -58,7 +60,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             lastCheckCount = prefs.lastReminderCount,
             lastSync = prefs.lastSync,
             pendingCount = pending,
-            syncing = syncing,
+            syncing = sync == SyncState.RUNNING,
+            syncFailed = sync == SyncState.FAILED,
             themeMode = prefs.themeMode,
             notificationAsked = prefs.notificationAsked
         )

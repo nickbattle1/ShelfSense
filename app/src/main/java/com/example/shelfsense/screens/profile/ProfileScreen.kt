@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DeleteForever
@@ -165,12 +166,14 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                 StatusRow(
                     icon = when {
                         state.syncing -> Icons.Filled.CloudSync
+                        state.syncFailed -> Icons.Filled.CloudOff
                         state.pendingCount > 0 -> Icons.Filled.CloudUpload
                         else -> Icons.Filled.CloudDone
                     },
                     title = backupTitle(state),
                     status = backupStatus(state),
                     actionLabel = if (state.syncing) null else "Sync now",
+                    warning = state.syncFailed,
                     onAction = {
                         viewModel.syncNow()
                         messenger.show("Backing up, and fetching any changes from your other devices")
@@ -355,6 +358,7 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
 // sync in plain words: the phone keeps the working copy and Firestore holds the backup
 private fun backupTitle(state: ProfileUiState): String = when {
     state.syncing -> "Backing up…"
+    state.syncFailed -> "Backup didn't finish"
     state.pendingCount == 1 -> "1 change not backed up yet"
     state.pendingCount > 1 -> "${state.pendingCount} changes not backed up yet"
     state.lastSync != null -> "Pantry backed up"
@@ -362,6 +366,7 @@ private fun backupTitle(state: ProfileUiState): String = when {
 }
 
 private fun backupStatus(state: ProfileUiState): String = when {
+    state.syncFailed -> "Tap Sync now to try again"
     state.pendingCount > 0 -> "Uploads by itself once you're online"
     state.lastSync != null -> "Last synced ${Dates.relative(state.lastSync).replaceFirstChar { it.lowercase() }}"
     else -> "Backs up to your account whenever you're online"

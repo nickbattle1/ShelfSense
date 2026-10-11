@@ -63,6 +63,11 @@ fun FoodDetailScreen(
     // null for items with nothing to count down to
     val info = state.info
 
+    // a write that fails shows as a message rather than crashing the screen
+    LaunchedEffect(Unit) {
+        viewModel.errors.collect { messenger.show(it) }
+    }
+
     // every outcome can be undone from the snackbar, which lives in the root scaffold
     val resolve: (Outcome) -> Unit = { outcome ->
         viewModel.recordOutcome(outcome) { snapshot ->

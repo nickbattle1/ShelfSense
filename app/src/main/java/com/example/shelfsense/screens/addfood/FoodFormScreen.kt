@@ -140,6 +140,10 @@ fun FoodFormScreen(
                 InfoBanner(title = "Check the highlighted fields", kind = BannerKind.ERROR)
                 Spacer(Modifier.height(16.dp))
             }
+            state.saveError?.let { message ->
+                InfoBanner(title = message, kind = BannerKind.ERROR)
+                Spacer(Modifier.height(16.dp))
+            }
             TextFieldRow(
                 label = "Food name",
                 value = state.name,

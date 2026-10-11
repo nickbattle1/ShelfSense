@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+// what the sync worker last did, so Profile can tell "uploading" apart from "gave up"
+enum class SyncState { IDLE, RUNNING, FAILED }
+
 // offline first: every change lands in Room straight away and is queued for Firestore,
 // which CloudSyncWorker pushes whenever the device has a connection
 class PantryRepository(context: Context) {
@@ -50,9 +53,17 @@ class PantryRepository(context: Context) {
         WorkScheduler.requestSync(appContext, pull)
     }
 
-    // true while the sync worker is running, for the status row on Profile
-    fun observeSyncing(): Flow<Boolean> =
-        WorkScheduler.observeSync(appContext).map { work -> work.any { it.state == WorkInfo.State.RUNNING } }
+    // a failed run only counts while nothing newer is queued. the next request replaces a failed chain,
+    // so Sync now or any new change starts afresh
+    fun observeSyncState(): Flow<SyncState> =
+        WorkScheduler.observeSync(appContext).map { work ->
+            when {
+                work.any { it.state == WorkInfo.State.RUNNING } -> SyncState.RUNNING
+                work.any { it.state == WorkInfo.State.FAILED } &&
+                    work.none { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED } -> SyncState.FAILED
+                else -> SyncState.IDLE
+            }
+        }
 
     suspend fun getItem(id: String): PantryItem? = dao.getById(id)
 
