@@ -61,9 +61,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             lastSync = prefs.lastSync,
             pendingCount = pending,
             syncing = sync == SyncState.RUNNING,
-            // only a failure with changes still waiting counts, so an old failed run can never
-            // outlast a later successful one
-            syncFailed = sync == SyncState.FAILED && pending > 0,
+            // only a failure with something still waiting counts, pantry rows or a profile edit,
+            // so an old failed run can never outlast a later successful one
+            syncFailed = sync == SyncState.FAILED && (pending > 0 || prefs.profilePending),
             themeMode = prefs.themeMode,
             notificationAsked = prefs.notificationAsked
         )
