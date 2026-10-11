@@ -20,6 +20,15 @@ class ReportsTest {
     }
 
     @Test
+    fun rateBandsSplitAtEightyAndSixty() {
+        assertEquals(RateBand.GOOD, rateBand(84))
+        assertEquals(RateBand.GOOD, rateBand(80))
+        assertEquals(RateBand.FAIR, rateBand(79))
+        assertEquals(RateBand.FAIR, rateBand(60))
+        assertEquals(RateBand.LOW, rateBand(59))
+    }
+
+    @Test
     fun noOutcomesMeansNoRate() {
         assertNull(OutcomeTotals().avoidanceRate)
     }

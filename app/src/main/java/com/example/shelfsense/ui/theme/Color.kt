@@ -39,6 +39,7 @@ data class ShelfColors(
 
 // forest green, warm cream, mint and oat beige from the brand sheet. urgency text colours are
 // darkened versions of the accents so labels still pass contrast on cream and white
+// warning, error and info text sit a few percent darker than A1, so banner text clears 4.5:1 on its tint
 val LightShelfColors = ShelfColors(
     background = Color(0xFFF9F6ED),
     surface = Color(0xFFFFFFFF),
@@ -51,11 +52,11 @@ val LightShelfColors = ShelfColors(
     chip = Color(0xFFE8DFD1),
     oat = Color(0xFFE8DFD1),
     disabled = Color(0xFFD8D2C6),
-    urgent = Color(0xFFC8402C),
+    urgent = Color(0xFFBE3D2A),
     urgentBg = Color(0xFFFBEAE3),
-    warn = Color(0xFFB45309),
+    warn = Color(0xFFAF5109),
     warnBg = Color(0xFFFBF0D2),
-    info = Color(0xFF3F6F92),
+    info = Color(0xFF3C698B),
     infoBg = Color(0xFFDCE7EF),
     sage = Color(0xFFA7C957),
     consumed = Color(0xFF1B5E3F),

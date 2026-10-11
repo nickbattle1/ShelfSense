@@ -20,3 +20,16 @@ fun totalsOf(counts: List<Pair<Outcome, Int>>): OutcomeTotals = OutcomeTotals(
 )
 
 fun List<OutcomeCount>.toTotals(): OutcomeTotals = totalsOf(map { it.outcome to it.count })
+
+// how the avoidance rate reads on Insights. the band is always named in words beside its colour
+enum class RateBand(val label: String) {
+    GOOD("On track"),
+    FAIR("Getting there"),
+    LOW("Room to improve")
+}
+
+fun rateBand(rate: Int): RateBand = when {
+    rate >= 80 -> RateBand.GOOD
+    rate >= 60 -> RateBand.FAIR
+    else -> RateBand.LOW
+}

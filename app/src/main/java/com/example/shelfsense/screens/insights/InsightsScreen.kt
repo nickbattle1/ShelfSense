@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.shelfsense.data.local.CategoryCount
+import com.example.shelfsense.domain.RateBand
 import com.example.shelfsense.domain.StorageGuidance
+import com.example.shelfsense.domain.rateBand
 import com.example.shelfsense.ui.components.CardDivider
 import com.example.shelfsense.ui.components.DropdownField
 import com.example.shelfsense.ui.components.EmptyState
@@ -88,6 +90,16 @@ private fun RateCard(state: InsightsUiState) {
     val c = ShelfTheme.colors
     val totals = state.current
     val rate = totals.avoidanceRate
+    val band = rate?.let { rateBand(it) }
+    // green on green passes contrast in dark mode but reads flat, so the words switch to the light text colour there
+    val text = if (c.isDark) c.ink else c.primary
+    // the percentage takes its band's colour, and the sentence below names the band, so colour is never the only cue
+    val rateColour = when (band) {
+        RateBand.GOOD -> c.primary
+        RateBand.FAIR -> c.warn
+        RateBand.LOW -> c.urgent
+        null -> text
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -96,20 +108,20 @@ private fun RateCard(state: InsightsUiState) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text("WASTE AVOIDANCE RATE", style = MaterialTheme.typography.labelSmall, color = c.primary)
+            Text("WASTE AVOIDANCE RATE", style = MaterialTheme.typography.labelSmall, color = text)
             Text(
                 if (rate != null) "$rate%" else "No data",
                 style = MaterialTheme.typography.headlineMedium,
-                color = c.primary
+                color = rateColour
             )
             Text(
-                if (rate != null) {
-                    "${totals.saved} of ${totals.resolved} resolved items were consumed or donated."
+                if (rate != null && band != null) {
+                    "${band.label}. ${totals.saved} of ${totals.resolved} resolved items were consumed or donated."
                 } else {
                     "No outcomes recorded in the ${state.period.label.lowercase()}."
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = c.primary
+                color = text
             )
         }
         Spacer(Modifier.width(12.dp))
