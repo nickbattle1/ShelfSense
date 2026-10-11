@@ -175,8 +175,14 @@ fun ProfileScreen(onSignedOut: () -> Unit, viewModel: ProfileViewModel = viewMod
                     actionLabel = if (state.syncing) null else "Sync now",
                     warning = state.syncFailed,
                     onAction = {
-                        viewModel.syncNow()
-                        messenger.show("Backing up, and fetching any changes from your other devices")
+                        val online = viewModel.syncNow()
+                        messenger.show(
+                            if (online) {
+                                "Backing up, and fetching any changes from your other devices"
+                            } else {
+                                "You're offline. ShelfSense will back up as soon as you're connected"
+                            }
+                        )
                     }
                 )
             }

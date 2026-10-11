@@ -1,6 +1,8 @@
 package com.example.shelfsense.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.work.WorkInfo
 import com.example.shelfsense.data.local.CategoryCount
 import com.example.shelfsense.data.local.MonthlyOutcomeCount
@@ -74,12 +76,25 @@ class PantryRepository(context: Context) {
     suspend fun save(item: PantryItem) {
         // NonCancellable so leaving the screen mid write can't lose the change
         withContext(NonCancellable) { dao.upsert(item.prepared()) }
-        WorkScheduler.requestSync(appContext)
+        scheduleUpload()
     }
 
     suspend fun saveAll(items: List<PantryItem>) {
         withContext(NonCancellable) { dao.upsertAll(items.map { it.prepared() }) }
-        WorkScheduler.requestSync(appContext)
+        scheduleUpload()
+    }
+
+    // the row is already saved and marked pending, so if scheduling fails the upload just waits
+    // for the next launch or Sync now, and the save itself is never reported as failed
+    private fun scheduleUpload() {
+        runCatching { WorkScheduler.requestSync(appContext) }
+    }
+
+    // only used to word the Sync now message, the worker waits for a connection either way
+    fun isOnline(): Boolean {
+        val connectivity = appContext.getSystemService(ConnectivityManager::class.java) ?: return false
+        val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     suspend fun recordOutcome(item: PantryItem, outcome: Outcome) {

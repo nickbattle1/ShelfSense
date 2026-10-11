@@ -61,7 +61,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             lastSync = prefs.lastSync,
             pendingCount = pending,
             syncing = sync == SyncState.RUNNING,
-            syncFailed = sync == SyncState.FAILED,
+            // only a failure with changes still waiting counts, so an old failed run can never
+            // outlast a later successful one
+            syncFailed = sync == SyncState.FAILED && pending > 0,
             themeMode = prefs.themeMode,
             notificationAsked = prefs.notificationAsked
         )
@@ -123,8 +125,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         settings.checkRemindersNow()
     }
 
-    fun syncNow() {
+    // returns whether the phone is online, so the screen can say what will happen
+    fun syncNow(): Boolean {
         pantry.requestSync(pull = true)
+        return pantry.isOnline()
     }
 
     fun setTheme(mode: ThemeMode) {
