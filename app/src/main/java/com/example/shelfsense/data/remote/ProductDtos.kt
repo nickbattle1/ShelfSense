@@ -4,16 +4,10 @@ import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 
 // Gson ignores Kotlin defaults and non-null types, so every field is nullable
-data class ProductResponse(
-    @SerializedName("code") val code: String?,
-    @SerializedName("status") val status: String?,
-    @SerializedName("result") val result: ResultDto?,
-    @SerializedName("product") val product: ProductDto?
-)
 
-data class ResultDto(
-    @SerializedName("id") val id: String?,
-    @SerializedName("name") val name: String?
+// only the product object is read, Gson skips the rest of the envelope
+data class ProductResponse(
+    @SerializedName("product") val product: ProductDto?
 )
 
 data class ProductDto(

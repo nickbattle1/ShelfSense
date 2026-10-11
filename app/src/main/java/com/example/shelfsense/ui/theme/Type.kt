@@ -6,7 +6,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// swap for FontFamily(Font(R.font.poppins_regular), ...) once the Poppins files are in res/font
+// system font, same as the A1 prototype screens. the brand lettering lives in the logo image
 private val Brand = FontFamily.Default
 
 // one type scale for the whole app, screens never set their own font sizes
