@@ -10,6 +10,7 @@ import com.example.shelfsense.data.local.OutcomeCount
 import com.example.shelfsense.data.local.PantryItem
 import com.example.shelfsense.data.local.ShelfSenseDatabase
 import com.example.shelfsense.data.model.Outcome
+import com.example.shelfsense.data.photos.PhotoStore
 import com.example.shelfsense.data.remote.FirestoreMapper
 import com.example.shelfsense.domain.ActionDates
 import com.example.shelfsense.worker.WorkScheduler
@@ -152,6 +153,7 @@ class PantryRepository(context: Context) {
     suspend fun pullFromCloud(uid: String): Int {
         val snapshot = pantryCollection(uid).get(Source.SERVER).await()
         val remoteIds = HashSet<String>()
+        val photos = PhotoStore(appContext, uid)
         val newer = snapshot.documents.mapNotNull { doc ->
             remoteIds += doc.id
             val remote = FirestoreMapper.fromDocument(doc) ?: return@mapNotNull null
@@ -159,8 +161,9 @@ class PantryRepository(context: Context) {
             if (local == null || remote.updatedAt > local.updatedAt) {
                 remote.copy(
                     actionDate = ActionDates.actionDate(remote.printedDate, remote.openedDate, remote.useWithinDays),
-                    // photos stay on the phone that took them, so the local one is kept
-                    photoPath = local?.photoPath
+                    // photos stay on the phone that took them. after a sign out the row is gone,
+                    // but the photo is still in this account's folder under the item's name
+                    photoPath = local?.photoPath ?: photos.existingFor(remote.id)
                 )
             } else {
                 null

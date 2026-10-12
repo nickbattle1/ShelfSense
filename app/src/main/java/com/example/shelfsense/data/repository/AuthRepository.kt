@@ -27,6 +27,9 @@ class AuthRepository(context: Context) {
 
     val currentUser: FirebaseUser? get() = auth.currentUser
 
+    // for the per account photo folder
+    val currentUid: String? get() = auth.currentUser?.uid
+
     // the main app needs a signed in user with a confirmed email
     val hasVerifiedUser: Boolean get() = auth.currentUser?.isEmailVerified == true
 
@@ -94,6 +97,8 @@ class AuthRepository(context: Context) {
         WorkScheduler.cancelSync(appContext)
         PantryRepository(appContext).deleteCloudData(user.uid)
         user.delete().await()
+        // photos never left the phone, so this is the only copy to remove
+        PhotoStore(appContext, user.uid).deleteAccountPhotos()
         auth.signOut()
         clearDeviceData()
     }
@@ -107,11 +112,12 @@ class AuthRepository(context: Context) {
         return user
     }
 
-    // everything this phone holds for the account, cleared on sign out and after deleting it
+    // the pantry and settings this phone holds for the account, cleared on sign out and after deleting it.
+    // photos stay in the account's own folder so they come back on the next sign in here
     private suspend fun clearDeviceData() {
         PantryRepository(appContext).clearLocal()
         settings.clearAccount()
-        PhotoStore(appContext).clearAll()
+        PhotoStore(appContext, null).clearLooseFiles()
         NotificationManagerCompat.from(appContext).cancelAll()
     }
 

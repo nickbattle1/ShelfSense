@@ -11,6 +11,7 @@ import com.example.shelfsense.data.model.DateType
 import com.example.shelfsense.data.model.FoodCategory
 import com.example.shelfsense.data.model.StorageLocation
 import com.example.shelfsense.data.photos.PhotoStore
+import com.example.shelfsense.data.repository.AuthRepository
 import com.example.shelfsense.data.repository.PantryRepository
 import com.example.shelfsense.data.repository.ProductInfo
 import com.example.shelfsense.data.repository.ProductLookup
@@ -20,11 +21,13 @@ import com.example.shelfsense.domain.ActionInfo
 import com.example.shelfsense.navigation.Routes
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class FormMode { MANUAL, LOOKUP, EDIT }
 
@@ -130,7 +133,7 @@ class FoodFormViewModel(
 
     private val pantry = PantryRepository(application)
     private val products = ProductRepository()
-    private val photos = PhotoStore(application)
+    private val photos = PhotoStore(application, AuthRepository(application).currentUid)
     private val itemId: String? = savedStateHandle.get<String>(Routes.ARG_ITEM_ID)
     private val barcode: String? = savedStateHandle.get<String>(Routes.ARG_BARCODE)
     private var original: PantryItem? = null
@@ -301,7 +304,10 @@ class FoodFormViewModel(
         _uiState.update { it.copy(saving = true, saveError = null) }
         viewModelScope.launch {
             try {
-                pantry.save(item)
+                // the photo takes its item's name, so this phone can find it again after a sign out
+                val photoPath = withContext(Dispatchers.IO) { photos.attach(item.id, state.photoPath) }
+                _uiState.update { it.copy(photoPath = photoPath) }
+                pantry.save(item.copy(photoPath = photoPath))
                 _uiState.update { it.copy(saving = false, savedName = item.name, dirty = false) }
             } catch (e: CancellationException) {
                 throw e
