@@ -4,6 +4,8 @@ ShelfSense is an Android app that helps households waste less food. It keeps tra
 
 Built for ITO5046 at Monash University by Nicholas Battle.
 
+Video demonstration: https://www.youtube.com/watch?v=9e78QA0c1Ho
+
 ## Built with
 
 Kotlin and Jetpack Compose, Room, Retrofit with the Open Food Facts API, WorkManager, DataStore, Firebase Authentication, Cloud Firestore and the Google code scanner.
